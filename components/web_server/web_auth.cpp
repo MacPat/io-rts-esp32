@@ -25,6 +25,9 @@
 #include <string>
 
 #include "MiscConfig.hpp"
+#include "web_tls.h"
+#include "esp_system.h"
+#include "esp_heap_caps.h"
 
 static const char *TAG = "web_auth";
 
@@ -51,6 +54,7 @@ static portMUX_TYPE s_mux = portMUX_INITIALIZER_UNLOCKED;
 static int64_t s_last_failure_us = 0;
 static bool s_has_failure = false;
 
+static bool s_secure_cookie = false;
 static web_auth_api_key_check_fn s_api_key_check = nullptr;
 static web_auth_sessions_changed_fn s_sessions_changed = nullptr;
 
@@ -164,14 +168,16 @@ static void drop_request_session(httpd_req_t *req)
 static void set_session_cookie(httpd_req_t *req, char *hdr_buf, size_t hdr_len, const char *token)
 {
     // hdr_buf must stay valid until the response is sent (httpd keeps the pointer)
-    snprintf(hdr_buf, hdr_len, WEB_AUTH_COOKIE_NAME "=%s; Path=/; HttpOnly; SameSite=Strict; Max-Age=%d",
-             token, WEB_AUTH_MAX_AGE_S);
+    snprintf(hdr_buf, hdr_len, WEB_AUTH_COOKIE_NAME "=%s; Path=/; HttpOnly; SameSite=Strict; Max-Age=%d%s",
+             token, WEB_AUTH_MAX_AGE_S, s_secure_cookie ? "; Secure" : "");
     httpd_resp_set_hdr(req, "Set-Cookie", hdr_buf);
 }
 
 static void clear_session_cookie(httpd_req_t *req)
 {
-    httpd_resp_set_hdr(req, "Set-Cookie", WEB_AUTH_COOKIE_NAME "=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0");
+    httpd_resp_set_hdr(req, "Set-Cookie", s_secure_cookie
+        ? WEB_AUTH_COOKIE_NAME "=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0; Secure"
+        : WEB_AUTH_COOKIE_NAME "=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0");
 }
 
 static esp_err_t send_json_status(httpd_req_t *req, const char *status, cJSON *obj)
@@ -273,6 +279,11 @@ void web_auth_invalidate_all_sessions(void)
         s.in_use = false;
     taskEXIT_CRITICAL(&s_mux);
     notify_sessions_changed();
+}
+
+void web_auth_set_secure_cookie(bool secure)
+{
+    s_secure_cookie = secure;
 }
 
 void web_auth_init(web_auth_api_key_check_fn api_key_check, web_auth_sessions_changed_fn sessions_changed)
@@ -466,6 +477,85 @@ static esp_err_t api_auth_password_post(httpd_req_t *req)
     return send_result_status(req, "200 OK", true, "Password changed");
 }
 
+// ─── HTTPS settings ─────────────────────────────────────────────────────────
+
+// GET /api/https — state of the optional HTTPS server (+ memory, to judge if the board copes with TLS)
+static esp_err_t api_https_get(httpd_req_t *req)
+{
+    if (!web_auth_request_allowed(req))
+        return send_result_status(req, "401 Unauthorized", false, "Login required");
+    cJSON *obj = cJSON_CreateObject();
+#if CONFIG_ESP_HTTPS_SERVER_ENABLE
+    cJSON_AddBoolToObject(obj, "available", true);
+#else
+    cJSON_AddBoolToObject(obj, "available", false);
+#endif
+    cJSON_AddBoolToObject(obj, "enabled", Config::MiscConfig::isHttpsEnabled());
+    cJSON_AddBoolToObject(obj, "active", web_tls_is_active());
+    char fp[96];
+    if (web_tls_get_fingerprint(fp, sizeof(fp)) == ESP_OK)
+        cJSON_AddStringToObject(obj, "fingerprint", fp);
+    cJSON_AddNumberToObject(obj, "heap_free", esp_get_free_heap_size());
+    cJSON_AddNumberToObject(obj, "heap_min", esp_get_minimum_free_heap_size());
+    cJSON_AddNumberToObject(obj, "heap_largest", heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+    return send_json_status(req, "200 OK", obj);
+}
+
+// POST /api/https  {"enabled": true|false, "password": "<current access password>"} — applied after reboot
+static esp_err_t api_https_post(httpd_req_t *req)
+{
+    if (!caller_may_change_settings(req))
+        return send_result_status(req, "401 Unauthorized", false, "Unauthorized");
+    cJSON *json = read_json_body(req);
+    if (!json)
+        return ESP_OK;
+    cJSON *jEnabled = cJSON_GetObjectItem(json, "enabled");
+    if (!cJSON_IsBool(jEnabled))
+    {
+        cJSON_Delete(json);
+        return send_result_status(req, "400 Bad Request", false, "Missing 'enabled'");
+    }
+    const bool enable = cJSON_IsTrue(jEnabled);
+    if (!check_password_field(req, json, "password"))
+    {
+        cJSON_Delete(json);
+        return ESP_OK;
+    }
+    cJSON_Delete(json);
+#if !CONFIG_ESP_HTTPS_SERVER_ENABLE
+    if (enable)
+        return send_result_status(req, "400 Bad Request", false, "HTTPS is not available in this firmware");
+#endif
+    if (enable)
+    {
+        // Create the certificate now, so its fingerprint can be checked before rebooting
+        char fp[96];
+        if (web_tls_get_fingerprint(fp, sizeof(fp)) != ESP_OK && web_tls_regenerate() != ESP_OK)
+            return send_result_status(req, "500 Internal Server Error", false, "Failed to create certificate");
+    }
+    if (Config::MiscConfig::SetHttpsEnabled(enable) != ESP_OK)
+        return send_result_status(req, "500 Internal Server Error", false, "Failed to save setting");
+    ESP_LOGI(TAG, "HTTPS %s (after reboot)", enable ? "enabled" : "disabled");
+    return send_result_status(req, "200 OK", true, "Saved — reboot to apply");
+}
+
+// POST /api/https/regenerate  {"password": "..."} — new key pair + certificate, applied after reboot
+static esp_err_t api_https_regenerate_post(httpd_req_t *req)
+{
+    if (!caller_may_change_settings(req))
+        return send_result_status(req, "401 Unauthorized", false, "Unauthorized");
+    cJSON *json = read_json_body(req);
+    if (!json)
+        return ESP_OK;
+    const bool ok = check_password_field(req, json, "password");
+    cJSON_Delete(json);
+    if (!ok)
+        return ESP_OK;
+    if (web_tls_regenerate() != ESP_OK)
+        return send_result_status(req, "500 Internal Server Error", false, "Failed to create certificate");
+    return send_result_status(req, "200 OK", true, "New certificate created — reboot to apply");
+}
+
 void web_auth_register_routes(httpd_handle_t server)
 {
     struct { const char *uri; httpd_method_t method; esp_err_t (*handler)(httpd_req_t *); } routes[] = {
@@ -474,6 +564,9 @@ void web_auth_register_routes(httpd_handle_t server)
         {"/api/auth/logout",   HTTP_POST, api_auth_logout_post},
         {"/api/auth/config",   HTTP_POST, api_auth_config_post},
         {"/api/auth/password", HTTP_POST, api_auth_password_post},
+        {"/api/https",            HTTP_GET,  api_https_get},
+        {"/api/https",            HTTP_POST, api_https_post},
+        {"/api/https/regenerate", HTTP_POST, api_https_regenerate_post},
     };
     for (auto &r : routes)
     {

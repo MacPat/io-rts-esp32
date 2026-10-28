@@ -1,5 +1,11 @@
 #include "web_server.h"
 #include "web_auth_internal.h"
+#include "web_tls.h"
+#include "esp_heap_caps.h"
+#include "esp_system.h"
+#if CONFIG_ESP_HTTPS_SERVER_ENABLE
+#include "esp_https_server.h"
+#endif
 #include "pair_log.h"
 #include <cmath>
 #include "sdkconfig.h"
@@ -3811,6 +3817,100 @@ done:
 
 // ─── Server startup ─────────────────────────────────────────────────────────
 
+#if CONFIG_ESP_HTTPS_SERVER_ENABLE
+// ─── Optional HTTPS ─────────────────────────────────────────────────────────
+
+// While HTTPS is on, port 80 only redirects to https://. Temporary (302) on purpose:
+// a permanent redirect would be cached by browsers and break access after HTTPS is switched off.
+static esp_err_t https_redirect_handler(httpd_req_t *req)
+{
+    char host[80] = {};
+    if (httpd_req_get_hdr_value_str(req, "Host", host, sizeof(host)) != ESP_OK || host[0] == '\0') {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Use https://");
+        return ESP_OK;
+    }
+    char *colon = strchr(host, ':');
+    if (colon) *colon = '\0'; // drop :80
+    for (const char *c = host; *c; c++) {
+        // Only hostnames / IPv4 — never echo anything that could inject headers
+        if (!((*c >= 'a' && *c <= 'z') || (*c >= 'A' && *c <= 'Z') || (*c >= '0' && *c <= '9') || *c == '.' || *c == '-')) {
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Use https://");
+            return ESP_OK;
+        }
+    }
+    std::string location = std::string("https://") + host + req->uri;
+    httpd_resp_set_status(req, "302 Found");
+    httpd_resp_set_hdr(req, "Location", location.c_str());
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    httpd_resp_send(req, nullptr, 0);
+    return ESP_OK;
+}
+
+static void start_http_redirect_server(void)
+{
+    httpd_config_t rc = HTTPD_DEFAULT_CONFIG();
+    rc.server_port      = 80;
+    rc.ctrl_port        = ESP_HTTPD_DEF_CTRL_PORT + 3; // +1: provisioning server, +2: HTTPS server
+    rc.stack_size       = 4096;
+    rc.max_uri_handlers = 2;
+    rc.max_open_sockets = 3;
+    rc.lru_purge_enable = true;
+    rc.task_priority    = tskIDLE_PRIORITY + 2;
+    rc.uri_match_fn     = httpd_uri_match_wildcard;
+    httpd_handle_t h = nullptr;
+    if (httpd_start(&h, &rc) != ESP_OK) {
+        ESP_LOGW(TAG, "HTTP->HTTPS redirect server not started");
+        return;
+    }
+    httpd_uri_t r = {};
+    r.uri = "/*"; r.method = HTTP_GET; r.handler = https_redirect_handler;
+    httpd_register_uri_handler(h, &r);
+}
+
+/// Start the HTTPS server with the device's own certificate. Returns nullptr on failure,
+/// in which case the caller falls back to plain HTTP so the web interface stays reachable.
+static httpd_handle_t start_https_server(const httpd_config_t &base)
+{
+    uint8_t *cert = nullptr, *key = nullptr;
+    size_t cert_len = 0, key_len = 0;
+    if (web_tls_load_or_create(&cert, &cert_len, &key, &key_len) != ESP_OK) {
+        ESP_LOGE(TAG, "HTTPS: no certificate available — falling back to HTTP");
+        return nullptr;
+    }
+
+    httpd_ssl_config_t sc = HTTPD_SSL_CONFIG_DEFAULT();
+    sc.httpd = base;
+    sc.httpd.stack_size       = 12288;                      // TLS handshake needs more stack
+    sc.httpd.max_open_sockets = 5;                          // each TLS session costs RAM
+    sc.httpd.ctrl_port        = ESP_HTTPD_DEF_CTRL_PORT + 2; // +1 is used by the fallback provisioning server
+    sc.httpd.recv_wait_timeout = 5;
+    sc.httpd.send_wait_timeout = 5;
+    sc.servercert     = cert;
+    sc.servercert_len = cert_len;
+    sc.prvtkey_pem    = key;   // DER is accepted as well
+    sc.prvtkey_len    = key_len;
+    sc.transport_mode = HTTPD_SSL_TRANSPORT_SECURE;
+    sc.port_secure    = 443;
+
+    httpd_handle_t h = nullptr;
+    esp_err_t err = httpd_ssl_start(&h, &sc);
+    // The server keeps its own copies
+    memset(key, 0, key_len);
+    free(key);
+    free(cert);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "HTTPS server failed to start (%s) — falling back to HTTP", esp_err_to_name(err));
+        return nullptr;
+    }
+    web_tls_set_active(true);
+    web_auth_set_secure_cookie(true);
+    start_http_redirect_server();
+    ESP_LOGI(TAG, "HTTPS server started on port 443 (free heap %u, largest block %u)",
+             (unsigned)esp_get_free_heap_size(), (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+    return h;
+}
+#endif // CONFIG_ESP_HTTPS_SERVER_ENABLE
+
 void web_server_start(void *ioRtsManager)
 {
     s_manager = static_cast<IoRts::IoRtsManager *>(ioRtsManager);
@@ -3842,10 +3942,16 @@ void web_server_start(void *ioRtsManager)
     config.enable_so_linger = false;
 
     httpd_handle_t server = NULL;
-    err = httpd_start(&server, &config);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to start HTTP server: %s", esp_err_to_name(err));
-        return;
+#if CONFIG_ESP_HTTPS_SERVER_ENABLE
+    if (Config::MiscConfig::isHttpsEnabled())
+        server = start_https_server(config);
+#endif
+    if (!server) {
+        err = httpd_start(&server, &config);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to start HTTP server: %s", esp_err_to_name(err));
+            return;
+        }
     }
     s_server = server;
 

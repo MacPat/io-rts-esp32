@@ -54,7 +54,16 @@ jobs:
       - name: Build firmware
         run: |
           . $IDF_PATH/export.sh
-          idf.py -DIDF_TARGET=esp32 -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.heltec" -DAPP_VERSION="${{ github.ref_name }}" build
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          # Snapshot version = nearest release tag + commits + hash (e.g. v2.1.11-3-gabc1234),
+          # so the display and update check still see a real version number
+          # Forks usually lack the release tags: borrow them from the upstream repository
+          if [ "${{ github.repository }}" != "rspaargaren/io-rts-esp32" ]; then
+            git fetch --quiet --tags https://github.com/rspaargaren/io-rts-esp32.git || true
+          fi
+          APP_VER="$(git describe --tags --abbrev=7 2>/dev/null || echo "v0.0.0-$(git rev-parse --short HEAD)")"
+          echo "Building version $APP_VER"
+          idf.py -DIDF_TARGET=esp32 -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.heltec" -DAPP_VERSION="$APP_VER" build
 
       - name: Prepare artifacts
         shell: bash
@@ -105,7 +114,16 @@ jobs:
       - name: Build firmware
         run: |
           . $IDF_PATH/export.sh
-          idf.py -B build_t3s3 -DIDF_TARGET=esp32s3 -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.lilygo_t3s3" -DAPP_VERSION="${{ github.ref_name }}" build
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          # Snapshot version = nearest release tag + commits + hash (e.g. v2.1.11-3-gabc1234),
+          # so the display and update check still see a real version number
+          # Forks usually lack the release tags: borrow them from the upstream repository
+          if [ "${{ github.repository }}" != "rspaargaren/io-rts-esp32" ]; then
+            git fetch --quiet --tags https://github.com/rspaargaren/io-rts-esp32.git || true
+          fi
+          APP_VER="$(git describe --tags --abbrev=7 2>/dev/null || echo "v0.0.0-$(git rev-parse --short HEAD)")"
+          echo "Building version $APP_VER"
+          idf.py -B build_t3s3 -DIDF_TARGET=esp32s3 -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.lilygo_t3s3" -DAPP_VERSION="$APP_VER" build
 
       - name: Prepare artifacts
         shell: bash
@@ -156,7 +174,16 @@ jobs:
       - name: Build firmware
         run: |
           . $IDF_PATH/export.sh
-          idf.py -B build_lora32 -DIDF_TARGET=esp32 -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.lilygo_lora32" -DAPP_VERSION="${{ github.ref_name }}" build
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          # Snapshot version = nearest release tag + commits + hash (e.g. v2.1.11-3-gabc1234),
+          # so the display and update check still see a real version number
+          # Forks usually lack the release tags: borrow them from the upstream repository
+          if [ "${{ github.repository }}" != "rspaargaren/io-rts-esp32" ]; then
+            git fetch --quiet --tags https://github.com/rspaargaren/io-rts-esp32.git || true
+          fi
+          APP_VER="$(git describe --tags --abbrev=7 2>/dev/null || echo "v0.0.0-$(git rev-parse --short HEAD)")"
+          echo "Building version $APP_VER"
+          idf.py -B build_lora32 -DIDF_TARGET=esp32 -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.lilygo_lora32" -DAPP_VERSION="$APP_VER" build
 
       - name: Prepare artifacts
         shell: bash

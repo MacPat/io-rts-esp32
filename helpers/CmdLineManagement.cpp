@@ -1,6 +1,7 @@
 #include "CmdLineManagement.hpp"
 #include "MiscConfig.hpp"
 #include "web_auth.h"
+#include "web_tls.h"
 #include "NetworkConfig.hpp"
 
 #include <string.h>
@@ -202,6 +203,78 @@ void register_config_webauth(void)
     ESP_ERROR_CHECK(esp_console_cmd_register(&config_webauth_cmd));
 }
 
+// ******************* HTTPS CONFIG ********************
+
+/// @brief Structure used by the 'config_https' command
+static struct
+{
+    struct arg_lit *read;
+    struct arg_lit *enable;
+    struct arg_lit *disable;
+    struct arg_lit *regen;
+    struct arg_end *end;
+} config_https_args;
+
+static int do_config_https_cmd(int argc, char **argv)
+{
+    int nerrors = arg_parse(argc, argv, (void **)&config_https_args);
+    if (nerrors != 0)
+    {
+        arg_print_errors(stderr, config_https_args.end, argv[0]);
+        return 1;
+    }
+    if (config_https_args.enable->count > 0 && config_https_args.disable->count > 0)
+    {
+        ESP_LOGE(TAG, "Use either --enable or --disable");
+        return 1;
+    }
+    if (config_https_args.regen->count > 0)
+    {
+        if (web_tls_regenerate() != ESP_OK)
+        {
+            ESP_LOGE(TAG, "Failed to create a new certificate");
+            return 1;
+        }
+        ESP_LOGI(TAG, "New certificate created (applied after reboot).");
+    }
+    if (config_https_args.enable->count > 0 || config_https_args.disable->count > 0)
+    {
+        const bool enable = config_https_args.enable->count > 0;
+        if (MiscConfig::SetHttpsEnabled(enable) != ESP_OK)
+        {
+            ESP_LOGE(TAG, "Failed to store HTTPS setting");
+            return 1;
+        }
+        ESP_LOGI(TAG, "HTTPS %s (applied after reboot).", enable ? "enabled" : "disabled");
+    }
+    char fp[96];
+    ESP_LOGI(TAG, "HTTPS: switched %s, currently %s", MiscConfig::isHttpsEnabled() ? "on" : "off",
+             web_tls_is_active() ? "active" : "not active");
+    if (web_tls_get_fingerprint(fp, sizeof(fp)) == ESP_OK)
+        ESP_LOGI(TAG, "Certificate SHA-256: %s", fp);
+    return 0;
+}
+
+void register_config_https(void)
+{
+    config_https_args.read = arg_lit0("r", "read", "Show HTTPS state and certificate fingerprint");
+    config_https_args.enable = arg_lit0(NULL, "enable", "Serve the web interface over HTTPS (after reboot)");
+    config_https_args.disable = arg_lit0(NULL, "disable", "Back to plain HTTP (after reboot, recovery)");
+    config_https_args.regen = arg_lit0(NULL, "regen", "Create a new key pair and certificate (after reboot)");
+    config_https_args.end = arg_end(4);
+
+    const esp_console_cmd_t config_https_cmd = {
+        .command = "config_https",
+        .help = "Configure HTTPS for the web interface (self-signed certificate created on the device)",
+        .hint = NULL,
+        .func = &do_config_https_cmd,
+        .argtable = &config_https_args,
+        .func_w_context = NULL,
+        .context = NULL};
+
+    ESP_ERROR_CHECK(esp_console_cmd_register(&config_https_cmd));
+}
+
 // ******************* Misc Register commands ********************
 
 void register_misc_cmdline_tools()
@@ -210,6 +283,7 @@ void register_misc_cmdline_tools()
     register_logout();
     register_config_password();
     register_config_webauth();
+    register_config_https();
 }
 
 // ******************* LOGIN ********************

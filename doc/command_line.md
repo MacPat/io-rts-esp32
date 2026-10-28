@@ -51,6 +51,18 @@ config_webauth  [-r] [--enable] [--disable]
 
 Login is only enforced when the console password has at least 8 characters and differs from the build-time default. While enforced, every `/api/*` route and the WebSocket require either a session cookie (`POST /api/auth/login`) or a valid `X-OTA-Key` header (API key for scripts). After a failed password attempt, password checks are refused for 2 seconds (HTTP 429) to slow down guessing, without a lockout.
 
+### Configure HTTPS for the web interface
+```
+config_https  [-r] [--enable] [--disable] [--regen]
+  Configure HTTPS for the web interface (self-signed certificate created on the device)
+  -r, --read  Show HTTPS state and certificate fingerprint
+  --enable  Serve the web interface over HTTPS (after reboot)
+  --disable  Back to plain HTTP (after reboot, recovery)
+  --regen  Create a new key pair and certificate (after reboot)
+```
+
+The key pair (ECDSA P-256) and self-signed certificate are generated on the board and stored in NVS, with the hostname, `hostname.local` and the current IP address as Subject Alternative Names. While HTTPS is active, port 80 only redirects to `https://` (temporary redirect, so switching back to HTTP keeps working). If the HTTPS server cannot start, the web interface falls back to plain HTTP.
+
 ### Configure Wifi
 ```
 config_wifi  [-rd] [--ssid=<SSID>] [--pwd=<password>] [--saemode=<SAE mode>] [--saepwid=<SAE pass>] [--auth=<threshold>]

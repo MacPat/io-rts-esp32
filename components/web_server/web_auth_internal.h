@@ -28,5 +28,8 @@ esp_err_t web_auth_gate(httpd_req_t *req);
 /// @brief WebSocket pre-handshake callback: rejects the upgrade when login is enforced and no valid session.
 esp_err_t web_auth_ws_pre_handshake(httpd_req_t *req);
 
+/// @brief Mark the session cookie "Secure" (only sent over HTTPS). Call when the HTTPS server is active.
+void web_auth_set_secure_cookie(bool secure);
+
 /// @brief Register the /api/auth/* routes (these are reachable without being logged in).
 void web_auth_register_routes(httpd_handle_t server);

@@ -7,6 +7,7 @@
 static const std::string MISC_CONFIG_NAMESPACE = "misc";        // namespace to group network configuration in NVS
 static const std::string MISC_CONFIG_ACCESS_PWD = "access_pwd"; // Key to store Access password (string)
 static const std::string MISC_CONFIG_WEB_AUTH = "web_auth";     // Key to store web login flag (uint8_t)
+static const std::string MISC_CONFIG_HTTPS = "https";           // Key to store HTTPS flag (uint8_t)
 
 using namespace Helpers;
 
@@ -92,5 +93,18 @@ namespace Config
     bool MiscConfig::isWebAuthEffective()
     {
         return isWebAuthEnabled() && isAccessPasswordStrong();
+    }
+
+    bool MiscConfig::isHttpsEnabled()
+    {
+        uint8_t enabled = 0;
+        NvsHelpers::GetValue(MISC_CONFIG_NAMESPACE, MISC_CONFIG_HTTPS, enabled);
+        return enabled != 0;
+    }
+
+    esp_err_t MiscConfig::SetHttpsEnabled(bool enabled)
+    {
+        uint8_t value = enabled ? 1 : 0;
+        return NvsHelpers::SetValue(MISC_CONFIG_NAMESPACE, MISC_CONFIG_HTTPS, value);
     }
 }

@@ -55,6 +55,15 @@ namespace Config
         /// @return true if login is enforced
         static bool isWebAuthEffective();
 
+        /// @brief Check if HTTPS has been switched on for the web interface (applied at boot)
+        /// @return true if the flag is set
+        static bool isHttpsEnabled();
+
+        /// @brief Store the HTTPS flag (takes effect after reboot)
+        /// @param enabled true to serve the web interface over HTTPS
+        /// @return ESP_OK if stored without error
+        static esp_err_t SetHttpsEnabled(bool enabled);
+
     private:
         static const std::string GetAccessPassword();
     };

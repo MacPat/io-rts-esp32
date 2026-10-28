@@ -12,6 +12,13 @@ CONFIG_FREERTOS_HZ=1000
 CONFIG_MQTT_PROTOCOL_5=y
 CONFIG_HTTPD_WS_SUPPORT=y
 CONFIG_HTTPD_WS_PRE_HANDSHAKE_CB_SUPPORT=y
+# Optional HTTPS web interface (switched on at runtime, off by default)
+CONFIG_ESP_HTTPS_SERVER_ENABLE=y
+# Needed to create the device's own self-signed certificate
+CONFIG_MBEDTLS_X509_CREATE_C=y
+CONFIG_MBEDTLS_X509_CRT_WRITE_C=y
+# Allocate TLS record buffers only while in use: saves tens of KB per connection on boards without PSRAM
+CONFIG_MBEDTLS_DYNAMIC_BUFFER=y
 CONFIG_HTTPD_MAX_REQ_HDR_LEN=4096
 CONFIG_WEB_ENABLED=y
 CONFIG_LWIP_MAX_SOCKETS=24

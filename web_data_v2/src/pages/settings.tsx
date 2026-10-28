@@ -8,6 +8,7 @@ import { ControllerSettings } from "../components/settings/Controller";
 import { IoSystemKeySettings } from "../components/settings/IoSystemKey";
 import { OtaKeySettings } from "../components/settings/OtaKey";
 import { WebLoginSettings } from "../components/settings/WebLogin";
+import { HttpsSettings } from "../components/settings/Https";
 import { FirmwareSettings } from "../components/settings/Firmware";
 import { WebUISettings } from "../components/settings/WebUi";
 import { WebUIUpdateSettings } from "../components/settings/WebUiUpdate";
@@ -59,6 +60,7 @@ export function Settings() {
         </div>
         <div class="settings-card">
           <WebLoginSettings />
+          <HttpsSettings />
           <ControllerSettings />
           <IoSystemKeySettings />
           <OtaKeySettings />
