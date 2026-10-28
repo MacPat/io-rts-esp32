@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased] — feature/web-auth
+
+### Added
+- **Optional web interface login** (off by default). Uses the controller access password (shared with the serial console). When enforced, all `/api/*` routes and the WebSocket require a session cookie (HttpOnly, SameSite=Strict, RAM-only sessions, 12 h idle / 7 day maximum) or a valid `X-OTA-Key` header for scripts. `GET /api/ota/key` is no longer readable without login once enforced.
+- **Brute-force pacing**: after a failed password check, further checks are refused with HTTP 429 for 2 seconds (global, no hard lockout).
+- New endpoints `/api/auth/status`, `/api/auth/login`, `/api/auth/logout`, `/api/auth/config`, `/api/auth/password`.
+- New CLI command `config_webauth [--enable|--disable|-r]`; `config_password -d` also switches web login off (recovery).
+- Web UI: login screen and a "Web login" row under Settings → Security (enable/disable, change password, log out). Translations en/nl/de/fr.
+- `CONFIG_HTTPD_WS_PRE_HANDSHAKE_CB_SUPPORT` enabled so the WebSocket upgrade can be checked against the session cookie.
+
 ## [Unreleased] — fix/web-ui-polish
 
 ### Fixed

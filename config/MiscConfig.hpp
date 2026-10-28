@@ -32,6 +32,29 @@ namespace Config
         /// @return current password
         static const std::string GetEffectiveAccessPassword();
 
+        /// @brief Minimum length of the access password before web login may be enabled
+        static constexpr size_t STRONG_PASSWORD_MINSIZE = 8;
+
+        /// @brief Check if the access password is suitable to protect the web interface:
+        /// at least STRONG_PASSWORD_MINSIZE characters and different from the build-time default
+        /// @return true if the password is strong enough
+        static bool isAccessPasswordStrong();
+
+        /// @brief Check if web interface login has been switched on (stored flag only)
+        /// @return true if the flag is set
+        static bool isWebAuthEnabled();
+
+        /// @brief Store the web interface login flag
+        /// @param enabled true to require login on the web interface
+        /// @return ESP_OK if stored without error
+        static esp_err_t SetWebAuthEnabled(bool enabled);
+
+        /// @brief Check if web interface login is actually enforced: flag set AND password strong.
+        /// A weak/default password never protects the web interface, so login is only enforced
+        /// when the password cannot be guessed from the public build defaults.
+        /// @return true if login is enforced
+        static bool isWebAuthEffective();
+
     private:
         static const std::string GetAccessPassword();
     };

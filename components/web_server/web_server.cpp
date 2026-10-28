@@ -1,4 +1,5 @@
 #include "web_server.h"
+#include "web_auth_internal.h"
 #include "pair_log.h"
 #include <cmath>
 #include "sdkconfig.h"
@@ -201,6 +202,12 @@ static esp_err_t ws_handler(httpd_req_t *req)
     for (int i = 0; i < WS_MAX_CLIENTS; i++)
         if (s_ws_fds[i] == fd) { is_new = false; break; }
 
+#if !CONFIG_HTTPD_WS_PRE_HANDSHAKE_CB_SUPPORT
+    // Without the pre-handshake hook we cannot see the session cookie: refuse all WS clients
+    // while web login is enforced (enable CONFIG_HTTPD_WS_PRE_HANDSHAKE_CB_SUPPORT).
+    if (is_new && web_auth_is_enforced()) return ESP_FAIL;
+#endif
+
     if (is_new) {
         s_diag_last_fd = fd;
         bool stored = false;
@@ -285,6 +292,26 @@ static void ws_keepalive_cb(void *)
     for (int i = 0; i < WS_MAX_CLIENTS; i++)
         if (s_ws_fds[i] != -1)
             ws_send_str(s_ws_fds[i], "{\"type\":\"ping\"}");
+}
+
+// Close every WebSocket client. Runs in the httpd task via httpd_queue_work.
+static void ws_close_all_job(void *arg)
+{
+    (void)arg;
+    for (int i = 0; i < WS_MAX_CLIENTS; i++) {
+        if (s_ws_fds[i] != -1) {
+            httpd_sess_trigger_close(s_server, s_ws_fds[i]);
+            s_ws_fds[i] = -1;
+        }
+    }
+}
+
+// Called by web_auth when sessions are dropped (logout, password change, login switched on/off).
+// Legitimate clients reconnect automatically and are re-checked against their session cookie.
+static void ws_on_sessions_changed(void)
+{
+    if (s_server)
+        httpd_queue_work(s_server, ws_close_all_job, nullptr);
 }
 
 void web_server_broadcast_message(const char *json_str)
@@ -1071,6 +1098,20 @@ static void ota_key_init(void)
         ESP_LOGE(TAG, "OTA: NVS read error: %s", esp_err_to_name(err));
     }
     nvs_close(h);
+}
+
+// Variant of ota_check_key() for the login gate: silent when the request carries no key at all,
+// so browsers that are simply not logged in do not flood the log with "unauthorized" warnings.
+static bool ota_key_present_and_valid(httpd_req_t *req)
+{
+    bool present = httpd_req_get_hdr_value_len(req, "X-OTA-Key") > 0;
+    if (!present) {
+        char url_buf[256] = {};
+        char key_buf[OTA_KEY_LEN + 1] = {};
+        present = httpd_req_get_url_query_str(req, url_buf, sizeof(url_buf)) == ESP_OK &&
+                  httpd_query_key_value(url_buf, "_key", key_buf, sizeof(key_buf)) == ESP_OK;
+    }
+    return present && ota_check_key(req);
 }
 
 static bool ota_check_key(httpd_req_t *req)
@@ -2058,6 +2099,12 @@ static esp_err_t api_io_config_post(httpd_req_t *req)
 static esp_err_t api_misc_password_post(httpd_req_t *req)
 {
     if (!ota_check_key(req)) { httpd_resp_send_err(req, HTTPD_401_UNAUTHORIZED, "Unauthorized"); return ESP_OK; }
+    if (web_auth_is_enforced()) {
+        // The access password also protects the web login: changing it then requires the current
+        // password, which only /api/auth/password checks.
+        send_result(req, false, "Web login is enabled: use /api/auth/password to change the password");
+        return ESP_OK;
+    }
     char *body = nullptr;
     if (read_body(req, &body) != ESP_OK) { send_result(req, false, "Failed to read body"); return ESP_OK; }
 
@@ -2094,6 +2141,7 @@ static esp_err_t api_misc_password_post(httpd_req_t *req)
 
     cJSON_Delete(json);
     if (err != ESP_OK) { send_result(req, false, "Failed to save password"); return ESP_OK; }
+    web_auth_invalidate_all_sessions();
     send_result(req, true, pwd.empty() ? "Password cleared — reboot to apply" : "Password saved — reboot to apply");
     return ESP_OK;
 }
@@ -3785,7 +3833,7 @@ void web_server_start(void *ioRtsManager)
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.stack_size = 8192;
     config.task_priority = tskIDLE_PRIORITY + 3; // below radio (8), IO processing (6), status updates (4)
-    config.max_uri_handlers = 70;
+    config.max_uri_handlers = 80;
     config.max_open_sockets = 13; // browser opens many parallel connections for static files + WS
     config.send_wait_timeout = 2;  // seconds; cap blocking sends to dead clients
     config.recv_wait_timeout = 2;
@@ -3811,10 +3859,14 @@ void web_server_start(void *ioRtsManager)
             esp_timer_start_periodic(s_ws_ka_timer, 30ULL * 1000 * 1000);
     }
 
-    // Helper lambda to register a plain HTTP route
+    // Optional web login: every route registered with reg() passes the auth gate first.
+    web_auth_init(ota_key_present_and_valid, ws_on_sessions_changed);
+
+    // Helper lambda to register an HTTP route behind the auth gate (real handler kept in user_ctx)
     auto reg = [&](const char *uri, httpd_method_t method, esp_err_t (*handler)(httpd_req_t *)) {
         httpd_uri_t r = {};
-        r.uri = uri; r.method = method; r.handler = handler;
+        r.uri = uri; r.method = method; r.handler = web_auth_gate;
+        r.user_ctx = reinterpret_cast<void *>(handler);
         httpd_register_uri_handler(server, &r);
     };
 
@@ -3824,6 +3876,9 @@ void web_server_start(void *ioRtsManager)
         r.uri = "/ws"; r.method = HTTP_GET; r.handler = ws_handler;
 #if CONFIG_HTTPD_WS_SUPPORT
         r.is_websocket = true;
+#endif
+#if CONFIG_HTTPD_WS_PRE_HANDSHAKE_CB_SUPPORT
+        r.ws_pre_handshake_cb = web_auth_ws_pre_handshake;
 #endif
         httpd_register_uri_handler(server, &r);
     }
@@ -3894,8 +3949,16 @@ void web_server_start(void *ioRtsManager)
     reg("/api/remote/capture/start",  HTTP_POST, api_capture_start_post);
     reg("/api/remote/capture/cancel", HTTP_POST, api_capture_cancel_post);
 
-    // Wildcard catch-all for static files
-    reg("/*", HTTP_GET, static_file_handler);
+    // Login routes — reachable without a session (they do their own checks)
+    web_auth_register_routes(server);
+
+    // Wildcard catch-all for static files — public, so the browser can render the login screen.
+    // Static files contain no device data; all data comes from the gated API and WebSocket.
+    {
+        httpd_uri_t r = {};
+        r.uri = "/*"; r.method = HTTP_GET; r.handler = static_file_handler;
+        httpd_register_uri_handler(server, &r);
+    }
 
     // Start log forwarding to WebSocket clients
     s_log_queue = xQueueCreate(LOG_QUEUE_DEPTH, LOG_LINE_MAX);

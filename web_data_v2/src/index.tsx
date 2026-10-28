@@ -12,8 +12,14 @@ import { Settings } from "./pages/settings";
 import { FirmwareUpdater } from "./components/FirmwareUpdater";
 import { ToastProvider } from "./components/ToastProvider";
 import { InstallBanner } from "./components/InstallBanner";
+import { LoginScreen } from "./components/LoginScreen";
+import { installAuthFetchInterceptor, useAuth } from "./hooks/useAuth";
+
+installAuthFetchInterceptor();
 
 export function App() {
+  const auth = useAuth();
+
   useEffect(() => {
     function onWheel(e: WheelEvent) {
       const main = document.querySelector("main");
@@ -25,6 +31,17 @@ export function App() {
     document.addEventListener("wheel", onWheel, { passive: true });
     return () => document.removeEventListener("wheel", onWheel);
   }, []);
+
+  // Wait for the login state before rendering anything that calls the API
+  if (!auth.loaded) return null;
+
+  if (auth.status?.enforced && !auth.status.authenticated) {
+    return (
+      <ToastProvider>
+        <LoginScreen />
+      </ToastProvider>
+    );
+  }
 
   return (
     <ToastProvider>

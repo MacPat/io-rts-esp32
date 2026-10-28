@@ -38,6 +38,19 @@ config_password  [-d] [--pass=<password>]
   --pass=<password>  Password (up to 32 characters)
 ```
 
+Note: the same password protects the web interface when web login is enabled. Resetting it with `-d` also switches web login off (recovery path).
+
+### Configure web interface login
+```
+config_webauth  [-r] [--enable] [--disable]
+  Configure login on the web interface (uses the console password)
+  -r, --read  Show current web login state
+  --enable  Require login on the web interface (needs a strong password)
+  --disable  Switch web interface login off (recovery)
+```
+
+Login is only enforced when the console password has at least 8 characters and differs from the build-time default. While enforced, every `/api/*` route and the WebSocket require either a session cookie (`POST /api/auth/login`) or a valid `X-OTA-Key` header (API key for scripts). After a failed password attempt, password checks are refused for 2 seconds (HTTP 429) to slow down guessing, without a lockout.
+
 ### Configure Wifi
 ```
 config_wifi  [-rd] [--ssid=<SSID>] [--pwd=<password>] [--saemode=<SAE mode>] [--saepwid=<SAE pass>] [--auth=<threshold>]

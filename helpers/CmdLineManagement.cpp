@@ -1,5 +1,6 @@
 #include "CmdLineManagement.hpp"
 #include "MiscConfig.hpp"
+#include "web_auth.h"
 #include "NetworkConfig.hpp"
 
 #include <string.h>
@@ -80,7 +81,8 @@ static int do_config_password_cmd(int argc, char **argv)
     if (config_password_args.del->count > 0)
     {
         MiscConfig::ResetAccessPassword();
-        ESP_LOGI(TAG, "Password configuration restored to default values");
+        web_auth_invalidate_all_sessions();
+        ESP_LOGI(TAG, "Password configuration restored to default values (web login switched off)");
     }
     else
     {
@@ -96,6 +98,12 @@ static int do_config_password_cmd(int argc, char **argv)
             else
             {
                 ESP_LOGI(TAG, "Password set to configuration storage.");
+                web_auth_invalidate_all_sessions();
+                if (MiscConfig::isWebAuthEnabled() && !MiscConfig::isAccessPasswordStrong())
+                {
+                    ESP_LOGW(TAG, "Password is shorter than %d characters or the default: web login is NOT enforced until a stronger password is set.",
+                             (int)MiscConfig::STRONG_PASSWORD_MINSIZE);
+                }
             }
         }
     }
@@ -120,6 +128,80 @@ void register_config_password(void)
     ESP_ERROR_CHECK(esp_console_cmd_register(&config_password_cmd));
 }
 
+// ******************* WEB LOGIN CONFIG ********************
+
+/// @brief Structure used by the 'config_webauth' command
+static struct
+{
+    struct arg_lit *read;
+    struct arg_lit *enable;
+    struct arg_lit *disable;
+    struct arg_end *end;
+} config_webauth_args;
+
+static int do_config_webauth_cmd(int argc, char **argv)
+{
+    int nerrors = arg_parse(argc, argv, (void **)&config_webauth_args);
+    if (nerrors != 0)
+    {
+        arg_print_errors(stderr, config_webauth_args.end, argv[0]);
+        return 1;
+    }
+    if (config_webauth_args.enable->count > 0 && config_webauth_args.disable->count > 0)
+    {
+        ESP_LOGE(TAG, "Use either --enable or --disable");
+        return 1;
+    }
+    if (config_webauth_args.enable->count > 0)
+    {
+        if (!MiscConfig::isAccessPasswordStrong())
+        {
+            ESP_LOGE(TAG, "Set a password of at least %d characters (not the default) with config_password first.",
+                     (int)MiscConfig::STRONG_PASSWORD_MINSIZE);
+            return 1;
+        }
+        if (MiscConfig::SetWebAuthEnabled(true) != ESP_OK)
+        {
+            ESP_LOGE(TAG, "Failed to store web login setting");
+            return 1;
+        }
+        web_auth_invalidate_all_sessions();
+        ESP_LOGI(TAG, "Web login enabled (applied immediately).");
+    }
+    else if (config_webauth_args.disable->count > 0)
+    {
+        if (MiscConfig::SetWebAuthEnabled(false) != ESP_OK)
+        {
+            ESP_LOGE(TAG, "Failed to store web login setting");
+            return 1;
+        }
+        web_auth_invalidate_all_sessions();
+        ESP_LOGI(TAG, "Web login disabled (applied immediately).");
+    }
+    ESP_LOGI(TAG, "Web login: switched %s, %s", MiscConfig::isWebAuthEnabled() ? "on" : "off",
+             MiscConfig::isWebAuthEffective() ? "enforced" : "not enforced");
+    return 0;
+}
+
+void register_config_webauth(void)
+{
+    config_webauth_args.read = arg_lit0("r", "read", "Show current web login state");
+    config_webauth_args.enable = arg_lit0(NULL, "enable", "Require login on the web interface (needs a strong password)");
+    config_webauth_args.disable = arg_lit0(NULL, "disable", "Switch web interface login off (recovery)");
+    config_webauth_args.end = arg_end(3);
+
+    const esp_console_cmd_t config_webauth_cmd = {
+        .command = "config_webauth",
+        .help = "Configure login on the web interface (uses the console password)",
+        .hint = NULL,
+        .func = &do_config_webauth_cmd,
+        .argtable = &config_webauth_args,
+        .func_w_context = NULL,
+        .context = NULL};
+
+    ESP_ERROR_CHECK(esp_console_cmd_register(&config_webauth_cmd));
+}
+
 // ******************* Misc Register commands ********************
 
 void register_misc_cmdline_tools()
@@ -127,6 +209,7 @@ void register_misc_cmdline_tools()
     register_reboot();
     register_logout();
     register_config_password();
+    register_config_webauth();
 }
 
 // ******************* LOGIN ********************

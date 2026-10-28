@@ -6,6 +6,7 @@
 
 static const std::string MISC_CONFIG_NAMESPACE = "misc";        // namespace to group network configuration in NVS
 static const std::string MISC_CONFIG_ACCESS_PWD = "access_pwd"; // Key to store Access password (string)
+static const std::string MISC_CONFIG_WEB_AUTH = "web_auth";     // Key to store web login flag (uint8_t)
 
 using namespace Helpers;
 
@@ -31,6 +32,9 @@ namespace Config
     void MiscConfig::ResetAccessPassword()
     {
         NvsHelpers::DeleteValue(MISC_CONFIG_NAMESPACE, MISC_CONFIG_ACCESS_PWD);
+        // The default password is public, so it must never be the only thing protecting the web interface.
+        // Resetting the password (e.g. via the serial console as recovery) therefore also switches web login off.
+        SetWebAuthEnabled(false);
     }
     bool MiscConfig::isAccessPasswordDefined()
     {
@@ -64,5 +68,29 @@ namespace Config
     const std::string MiscConfig::GetEffectiveAccessPassword()
     {
         return GetAccessPassword();
+    }
+
+    bool MiscConfig::isAccessPasswordStrong()
+    {
+        const std::string pass = GetAccessPassword();
+        return pass.length() >= STRONG_PASSWORD_MINSIZE && pass != CONFIG_CMD_LINE_MANAGEMENT_DEFAULT_PWD;
+    }
+
+    bool MiscConfig::isWebAuthEnabled()
+    {
+        uint8_t enabled = 0;
+        NvsHelpers::GetValue(MISC_CONFIG_NAMESPACE, MISC_CONFIG_WEB_AUTH, enabled);
+        return enabled != 0;
+    }
+
+    esp_err_t MiscConfig::SetWebAuthEnabled(bool enabled)
+    {
+        uint8_t value = enabled ? 1 : 0;
+        return NvsHelpers::SetValue(MISC_CONFIG_NAMESPACE, MISC_CONFIG_WEB_AUTH, value);
+    }
+
+    bool MiscConfig::isWebAuthEffective()
+    {
+        return isWebAuthEnabled() && isAccessPasswordStrong();
     }
 }
