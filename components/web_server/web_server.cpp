@@ -3851,9 +3851,9 @@ static void start_http_redirect_server(void)
     httpd_config_t rc = HTTPD_DEFAULT_CONFIG();
     rc.server_port      = 80;
     rc.ctrl_port        = ESP_HTTPD_DEF_CTRL_PORT + 3; // +1: provisioning server, +2: HTTPS server
-    rc.stack_size       = 4096;
+    rc.stack_size       = 3072;
     rc.max_uri_handlers = 2;
-    rc.max_open_sockets = 3;
+    rc.max_open_sockets = 2;
     rc.lru_purge_enable = true;
     rc.task_priority    = tskIDLE_PRIORITY + 2;
     rc.uri_match_fn     = httpd_uri_match_wildcard;
@@ -3880,8 +3880,10 @@ static httpd_handle_t start_https_server(const httpd_config_t &base)
 
     httpd_ssl_config_t sc = HTTPD_SSL_CONFIG_DEFAULT();
     sc.httpd = base;
-    sc.httpd.stack_size       = 12288;                      // TLS handshake needs more stack
-    sc.httpd.max_open_sockets = 5;                          // each TLS session costs RAM
+    sc.httpd.stack_size       = 10240;                      // TLS handshake needs more stack (Espressif default)
+    // Each TLS session costs several KB of heap; on boards without PSRAM keep this low.
+    // lru_purge_enable (inherited) closes the oldest connection when a browser opens more.
+    sc.httpd.max_open_sockets = 3;
     sc.httpd.ctrl_port        = ESP_HTTPD_DEF_CTRL_PORT + 2; // +1 is used by the fallback provisioning server
     sc.httpd.recv_wait_timeout = 5;
     sc.httpd.send_wait_timeout = 5;
