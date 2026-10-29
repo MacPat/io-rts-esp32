@@ -1,6 +1,7 @@
 #include "web_server.h"
 #include "web_auth_internal.h"
 #include "web_tls.h"
+#include "boot_info.h"
 #include "esp_heap_caps.h"
 #include "esp_system.h"
 #if CONFIG_ESP_HTTPS_SERVER_ENABLE
@@ -3237,6 +3238,18 @@ static esp_err_t api_info_get(httpd_req_t *req)
     cJSON_AddStringToObject(obj, "compile_time", desc->time);
     cJSON_AddStringToObject(obj, "idf_ver",      desc->idf_ver);
     cJSON_AddStringToObject(obj, "board",        CONFIG_BOARD_NAME);
+
+    // Restart diagnostics
+    const boot_info_t *bi = boot_info_get();
+    cJSON_AddNumberToObject(obj, "uptime_s",      boot_info_uptime_s());
+    cJSON_AddStringToObject(obj, "reset_reason",  bi->reason);
+    cJSON_AddNumberToObject(obj, "boot_count",    bi->boot_count);
+    if (bi->prev_valid) {
+        cJSON_AddNumberToObject(obj, "prev_uptime_s", bi->prev_uptime_s);
+        cJSON_AddNumberToObject(obj, "prev_heap_min", bi->prev_heap_min);
+    }
+    cJSON_AddNumberToObject(obj, "heap_free",     esp_get_free_heap_size());
+    cJSON_AddNumberToObject(obj, "heap_min",      esp_get_minimum_free_heap_size());
 
     FILE *vf = fopen(WEB_BASE_PATH "/version.json", "r");
     if (vf) {

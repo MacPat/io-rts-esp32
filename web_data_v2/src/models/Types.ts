@@ -124,6 +124,13 @@ export interface InfoResponse {
   idf_ver: string;
   board: string;
   web_version: string;
+  uptime_s?: number;
+  reset_reason?: string;
+  boot_count?: number;
+  prev_uptime_s?: number;
+  prev_heap_min?: number;
+  heap_free?: number;
+  heap_min?: number;
 }
 
 export type ApiResponse<Type> = {

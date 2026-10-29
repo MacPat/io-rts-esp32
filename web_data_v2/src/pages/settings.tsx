@@ -10,6 +10,7 @@ import { OtaKeySettings } from "../components/settings/OtaKey";
 import { WebLoginSettings } from "../components/settings/WebLogin";
 import { HttpsSettings } from "../components/settings/Https";
 import { FirmwareSettings } from "../components/settings/Firmware";
+import { RestartSettings } from "../components/settings/Restarts";
 import { WebUISettings } from "../components/settings/WebUi";
 import { WebUIUpdateSettings } from "../components/settings/WebUiUpdate";
 import { BackupSettings } from "../components/settings/Backup";
@@ -73,6 +74,7 @@ export function Settings() {
         </div>
         <div class="settings-card">
           <FirmwareSettings data={infoData.data} />
+          <RestartSettings data={infoData.data} />
           <WebUISettings data={infoData.data} />
           <WebUIUpdateSettings />
           <FirmwareUpdateSettings />
