@@ -12,6 +12,12 @@
 - **Optional HTTPS** (off by default, applied after reboot): self-signed ECDSA P-256 certificate generated on the device (no key in the firmware), SAN with hostname, `hostname.local` and IP. No HTTP->HTTPS redirect (saves heap); falls back to HTTP if the TLS server cannot start. Session cookie gets `Secure`. Settings → Security → HTTPS shows the certificate fingerprint and free memory; `/api/https`, `/api/https/regenerate`; CLI `config_https [--enable|--disable|--regen|-r]`. Build: `CONFIG_ESP_HTTPS_SERVER_ENABLE`, `CONFIG_MBEDTLS_X509_CREATE_C`, `CONFIG_MBEDTLS_DYNAMIC_BUFFER`.
 - **Restart diagnostics**: Settings → System → Uptime shows how long the board has been running, why it last started (power on, restart, crash, watchdog, brownout), the number of starts and — unless the power was cut — how long the previous run lasted and its lowest free memory. Kept in RTC memory + NVS, no extra heap. Also in `/api/info` (`uptime_s`, `reset_reason`, `boot_count`, `prev_uptime_s`, `prev_heap_min`, `heap_free`, `heap_min`).
 - The pairing-log `BOOT` line now includes the start number, reason and previous-run data, and is written once the clock is set (max. 60 s wait) so it gets a real timestamp instead of `boot+6s`.
+- Factory reset now also erases the HTTPS certificate (NVS namespace `https`).
+
+### Fixed
+- **Pairing log no longer needs ~40 KB of heap.** Once it reached 500 lines, every new entry re-read the whole file and reserved ~40 KB of contiguous memory to drop the oldest line, which fails (and crashes) on boards with little free heap. The log is now a ring of 8 parts of < 4 KB (one LittleFS block each, 32 KB total, same as before); when the newest part is full the oldest part is dropped, so at most 1/8 of the history goes at a time. Download and the web UI still get one file, oldest first. A large log from older firmware is split into parts on the first new entry.
+
+### Added (continued)
 - **Snapshot builds** now get a version from the nearest release tag (`git describe`, e.g. `v2.1.11-3-gabc1234`) instead of the branch name, which showed as `v0.0.0` on the display.
 
 ## [Unreleased] — fix/web-ui-polish

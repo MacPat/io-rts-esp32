@@ -2878,7 +2878,7 @@ static esp_err_t api_factory_reset_post(httpd_req_t *req)
 {
     if (!ota_check_key(req)) { httpd_resp_send_err(req, HTTPD_401_UNAUTHORIZED, "Unauthorized"); return ESP_OK; }
 
-    const char *namespaces[] = { "mqtt", "syslog", "ota", "network", "iohc", "misc" };
+    const char *namespaces[] = { "mqtt", "syslog", "ota", "network", "iohc", "misc", "https" };
     for (const auto &ns : namespaces) {
         nvs_handle_t h;
         if (nvs_open(ns, NVS_READWRITE, &h) == ESP_OK) {
