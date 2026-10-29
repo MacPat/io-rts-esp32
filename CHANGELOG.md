@@ -9,7 +9,7 @@
 - New CLI command `config_webauth [--enable|--disable|-r]`; `config_password -d` also switches web login off (recovery).
 - Web UI: login screen and a "Web login" row under Settings → Security (enable/disable, change password, log out). Translations en/nl/de/fr.
 - `CONFIG_HTTPD_WS_PRE_HANDSHAKE_CB_SUPPORT` enabled so the WebSocket upgrade can be checked against the session cookie.
-- **Optional HTTPS** (off by default, applied after reboot): self-signed ECDSA P-256 certificate generated on the device (no key in the firmware), SAN with hostname, `hostname.local` and IP. Port 80 redirects to HTTPS (302); falls back to HTTP if the TLS server cannot start. Session cookie gets `Secure`. Settings → Security → HTTPS shows the certificate fingerprint and free memory; `/api/https`, `/api/https/regenerate`; CLI `config_https [--enable|--disable|--regen|-r]`. Build: `CONFIG_ESP_HTTPS_SERVER_ENABLE`, `CONFIG_MBEDTLS_X509_CREATE_C`, `CONFIG_MBEDTLS_DYNAMIC_BUFFER`.
+- **Optional HTTPS** (off by default, applied after reboot): self-signed ECDSA P-256 certificate generated on the device (no key in the firmware), SAN with hostname, `hostname.local` and IP. No HTTP->HTTPS redirect (saves heap); falls back to HTTP if the TLS server cannot start. Session cookie gets `Secure`. Settings → Security → HTTPS shows the certificate fingerprint and free memory; `/api/https`, `/api/https/regenerate`; CLI `config_https [--enable|--disable|--regen|-r]`. Build: `CONFIG_ESP_HTTPS_SERVER_ENABLE`, `CONFIG_MBEDTLS_X509_CREATE_C`, `CONFIG_MBEDTLS_DYNAMIC_BUFFER`.
 - **Snapshot builds** now get a version from the nearest release tag (`git describe`, e.g. `v2.1.11-3-gabc1234`) instead of the branch name, which showed as `v0.0.0` on the display.
 
 ## [Unreleased] — fix/web-ui-polish

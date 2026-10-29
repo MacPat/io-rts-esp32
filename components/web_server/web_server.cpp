@@ -3820,53 +3820,6 @@ done:
 #if CONFIG_ESP_HTTPS_SERVER_ENABLE
 // ─── Optional HTTPS ─────────────────────────────────────────────────────────
 
-// While HTTPS is on, port 80 only redirects to https://. Temporary (302) on purpose:
-// a permanent redirect would be cached by browsers and break access after HTTPS is switched off.
-static esp_err_t https_redirect_handler(httpd_req_t *req)
-{
-    char host[80] = {};
-    if (httpd_req_get_hdr_value_str(req, "Host", host, sizeof(host)) != ESP_OK || host[0] == '\0') {
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Use https://");
-        return ESP_OK;
-    }
-    char *colon = strchr(host, ':');
-    if (colon) *colon = '\0'; // drop :80
-    for (const char *c = host; *c; c++) {
-        // Only hostnames / IPv4 — never echo anything that could inject headers
-        if (!((*c >= 'a' && *c <= 'z') || (*c >= 'A' && *c <= 'Z') || (*c >= '0' && *c <= '9') || *c == '.' || *c == '-')) {
-            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Use https://");
-            return ESP_OK;
-        }
-    }
-    std::string location = std::string("https://") + host + req->uri;
-    httpd_resp_set_status(req, "302 Found");
-    httpd_resp_set_hdr(req, "Location", location.c_str());
-    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
-    httpd_resp_send(req, nullptr, 0);
-    return ESP_OK;
-}
-
-static void start_http_redirect_server(void)
-{
-    httpd_config_t rc = HTTPD_DEFAULT_CONFIG();
-    rc.server_port      = 80;
-    rc.ctrl_port        = ESP_HTTPD_DEF_CTRL_PORT + 3; // +1: provisioning server, +2: HTTPS server
-    rc.stack_size       = 3072;
-    rc.max_uri_handlers = 2;
-    rc.max_open_sockets = 2;
-    rc.lru_purge_enable = true;
-    rc.task_priority    = tskIDLE_PRIORITY + 2;
-    rc.uri_match_fn     = httpd_uri_match_wildcard;
-    httpd_handle_t h = nullptr;
-    if (httpd_start(&h, &rc) != ESP_OK) {
-        ESP_LOGW(TAG, "HTTP->HTTPS redirect server not started");
-        return;
-    }
-    httpd_uri_t r = {};
-    r.uri = "/*"; r.method = HTTP_GET; r.handler = https_redirect_handler;
-    httpd_register_uri_handler(h, &r);
-}
-
 /// Start the HTTPS server with the device's own certificate. Returns nullptr on failure,
 /// in which case the caller falls back to plain HTTP so the web interface stays reachable.
 static httpd_handle_t start_https_server(const httpd_config_t &base)
@@ -3885,6 +3838,8 @@ static httpd_handle_t start_https_server(const httpd_config_t &base)
     // lru_purge_enable (inherited) closes the oldest connection when a browser opens more.
     sc.httpd.max_open_sockets = 3;
     sc.httpd.ctrl_port        = ESP_HTTPD_DEF_CTRL_PORT + 2; // +1 is used by the fallback provisioning server
+    // Note: no plain-HTTP redirect server on port 80 — it would cost several KB of heap
+    // (task stack, request buffer, sockets) on boards without PSRAM. Use https:// directly.
     sc.httpd.recv_wait_timeout = 5;
     sc.httpd.send_wait_timeout = 5;
     sc.servercert     = cert;
@@ -3906,7 +3861,6 @@ static httpd_handle_t start_https_server(const httpd_config_t &base)
     }
     web_tls_set_active(true);
     web_auth_set_secure_cookie(true);
-    start_http_redirect_server();
     ESP_LOGI(TAG, "HTTPS server started on port 443 (free heap %u, largest block %u)",
              (unsigned)esp_get_free_heap_size(), (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
     return h;

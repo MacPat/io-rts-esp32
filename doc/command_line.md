@@ -61,7 +61,7 @@ config_https  [-r] [--enable] [--disable] [--regen]
   --regen  Create a new key pair and certificate (after reboot)
 ```
 
-The key pair (ECDSA P-256) and self-signed certificate are generated on the board and stored in NVS, with the hostname, `hostname.local` and the current IP address as Subject Alternative Names. While HTTPS is active, port 80 only redirects to `https://` (temporary redirect, so switching back to HTTP keeps working). If the HTTPS server cannot start, the web interface falls back to plain HTTP.
+The key pair (ECDSA P-256) and self-signed certificate are generated on the board and stored in NVS, with the hostname, `hostname.local` and the current IP address as Subject Alternative Names. While HTTPS is active, plain `http://` is not served (no redirect server, to save memory): open `https://` directly. If the HTTPS server cannot start, the web interface falls back to plain HTTP.
 
 ### Configure Wifi
 ```
