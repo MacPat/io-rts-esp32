@@ -35,6 +35,7 @@ export function HttpsSettings() {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [newCert, setNewCert] = useState(false);
+  const [unsupported, setUnsupported] = useState(false);
 
   async function load() {
     try {
@@ -44,8 +45,9 @@ export function HttpsSettings() {
         cache: "no-store",
       });
       if (res.ok) setState((await res.json()) as HttpsState);
+      else if (res.status === 404) setUnsupported(true); // firmware without HTTPS support
     } catch {
-      /* older firmware without HTTPS support */
+      /* network hiccup: keep showing the placeholder */
     }
   }
 
@@ -116,7 +118,19 @@ export function HttpsSettings() {
     }, 20000);
   }
 
-  if (!state || !state.available) return null;
+  if (unsupported || (state && !state.available)) return null;
+
+  // Show the row straight away (no jump in the list) and fill it in once the board answers
+  if (!state)
+    return (
+      <div class="acc-row" data-help="https">
+        <AccordionHead
+          title="HTTPS"
+          titleI18n="settings.row.https"
+          summary={<span class="acc-sum-val">…</span>}
+        />
+      </div>
+    );
 
   const pending = state.enabled !== state.active || (newCert && state.active);
   const summary = state.active
