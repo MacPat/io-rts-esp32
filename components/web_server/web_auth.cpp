@@ -522,16 +522,16 @@ static esp_err_t api_https_post(httpd_req_t *req)
         return ESP_OK;
     }
     cJSON_Delete(json);
-#if !CONFIG_ESP_HTTPS_SERVER_ENABLE
-    if (enable)
-        return send_result_status(req, "400 Bad Request", false, "HTTPS is not available in this firmware");
-#endif
     if (enable)
     {
+#if CONFIG_ESP_HTTPS_SERVER_ENABLE
         // Create the certificate now, so its fingerprint can be checked before rebooting
         char fp[96];
         if (web_tls_get_fingerprint(fp, sizeof(fp)) != ESP_OK && web_tls_regenerate() != ESP_OK)
             return send_result_status(req, "500 Internal Server Error", false, "Failed to create certificate");
+#else
+        return send_result_status(req, "400 Bad Request", false, "HTTPS is not available in this firmware");
+#endif
     }
     if (Config::MiscConfig::SetHttpsEnabled(enable) != ESP_OK)
         return send_result_status(req, "500 Internal Server Error", false, "Failed to save setting");
