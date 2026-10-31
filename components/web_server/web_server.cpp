@@ -3247,7 +3247,15 @@ static esp_err_t api_info_get(httpd_req_t *req)
     if (bi->prev_valid) {
         cJSON_AddNumberToObject(obj, "prev_uptime_s", bi->prev_uptime_s);
         cJSON_AddNumberToObject(obj, "prev_heap_min", bi->prev_heap_min);
+        cJSON_AddNumberToObject(obj, "prev_alloc_fail", bi->prev_fail_count);
+        if (bi->prev_fail_count > 0) {
+            cJSON_AddNumberToObject(obj, "prev_alloc_fail_size", bi->prev_fail_size);
+            cJSON_AddStringToObject(obj, "prev_alloc_fail_task", bi->prev_fail_task);
+            cJSON_AddNumberToObject(obj, "prev_alloc_fail_at_s", bi->prev_fail_uptime_s);
+        }
     }
+    cJSON_AddNumberToObject(obj, "alloc_fail", boot_info_fail_count());
+    cJSON_AddNumberToObject(obj, "heap_largest",  heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
     cJSON_AddNumberToObject(obj, "heap_free",     esp_get_free_heap_size());
     cJSON_AddNumberToObject(obj, "heap_min",      esp_get_minimum_free_heap_size());
 

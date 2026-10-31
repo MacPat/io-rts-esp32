@@ -487,5 +487,8 @@
   "label.reset-reason.watchdog": "Hängt (Watchdog)",
   "label.reset-reason.brownout": "Spannungseinbruch (Brownout)",
   "label.reset-reason.deep_sleep": "Aufwachen aus Tiefschlaf",
-  "label.reset-reason.unknown": "Unbekannt"
+  "label.reset-reason.unknown": "Unbekannt",
+  "label.prev-alloc-fail": "Speicher voll im vorherigen Lauf",
+  "label.heap-largest": "Größter freier Block",
+  "label.alloc-fail": "Speicher voll seit Start"
 }

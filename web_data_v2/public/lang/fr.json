@@ -487,5 +487,8 @@
   "label.reset-reason.watchdog": "Bloqué (watchdog)",
   "label.reset-reason.brownout": "Baisse de tension (brownout)",
   "label.reset-reason.deep_sleep": "Réveil du sommeil profond",
-  "label.reset-reason.unknown": "Inconnu"
+  "label.reset-reason.unknown": "Inconnu",
+  "label.prev-alloc-fail": "Mémoire épuisée (session précédente)",
+  "label.heap-largest": "Plus grand bloc libre",
+  "label.alloc-fail": "Mémoire épuisée depuis le démarrage"
 }

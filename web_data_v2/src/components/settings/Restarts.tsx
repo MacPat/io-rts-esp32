@@ -92,10 +92,28 @@ export function RestartSettings({ data }: { data: InfoResponse | undefined }) {
               kb(data.prev_heap_min),
             )
           : null}
+        {data.prev_alloc_fail
+          ? row(
+              tr("label.prev-alloc-fail", "Out of memory in previous run"),
+              `${data.prev_alloc_fail}× — ${data.prev_alloc_fail_size ?? "?"} B, ${data.prev_alloc_fail_task ?? "?"}, ${duration(data.prev_alloc_fail_at_s ?? 0)}`,
+            )
+          : null}
         {data.heap_free !== undefined && data.heap_min !== undefined
           ? row(
               tr("label.heap-now", "Free memory now (lowest)"),
               `${kb(data.heap_free)} (${kb(data.heap_min)})`,
+            )
+          : null}
+        {data.heap_largest !== undefined
+          ? row(
+              tr("label.heap-largest", "Largest free block"),
+              kb(data.heap_largest),
+            )
+          : null}
+        {data.alloc_fail
+          ? row(
+              tr("label.alloc-fail", "Out of memory since start"),
+              `${data.alloc_fail}×`,
             )
           : null}
         {data.prev_uptime_s === undefined ? (

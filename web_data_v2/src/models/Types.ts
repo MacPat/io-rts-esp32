@@ -131,6 +131,12 @@ export interface InfoResponse {
   prev_heap_min?: number;
   heap_free?: number;
   heap_min?: number;
+  heap_largest?: number;
+  alloc_fail?: number;
+  prev_alloc_fail?: number;
+  prev_alloc_fail_size?: number;
+  prev_alloc_fail_task?: string;
+  prev_alloc_fail_at_s?: number;
 }
 
 export type ApiResponse<Type> = {

@@ -487,5 +487,8 @@
   "label.reset-reason.watchdog": "Vastgelopen (watchdog)",
   "label.reset-reason.brownout": "Spanningsdip (brownout)",
   "label.reset-reason.deep_sleep": "Wakker uit diepe slaap",
-  "label.reset-reason.unknown": "Onbekend"
+  "label.reset-reason.unknown": "Onbekend",
+  "label.prev-alloc-fail": "Geheugen op in vorige run",
+  "label.heap-largest": "Grootste vrije blok",
+  "label.alloc-fail": "Geheugen op sinds start"
 }

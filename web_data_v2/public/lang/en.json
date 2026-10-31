@@ -487,5 +487,8 @@
   "label.reset-reason.watchdog": "Hung (watchdog)",
   "label.reset-reason.brownout": "Power dip (brownout)",
   "label.reset-reason.deep_sleep": "Wake from deep sleep",
-  "label.reset-reason.unknown": "Unknown"
+  "label.reset-reason.unknown": "Unknown",
+  "label.prev-alloc-fail": "Out of memory in previous run",
+  "label.heap-largest": "Largest free block",
+  "label.alloc-fail": "Out of memory since start"
 }
