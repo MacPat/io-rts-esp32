@@ -4,19 +4,32 @@ import { useOtaKey } from "../../hooks/api/useOtaKey";
 import { useIOConfig } from "../../hooks/api/useIOConfig";
 import { ToastType } from "../ToastProvider";
 import { useToast } from "../../hooks/useToast";
+import useI18n from "../../hooks/useI18n";
 
 export function ControllerSettings() {
   const otaData = useOtaKey();
   const api = useIOConfig();
   const showToast = useToast();
+  const { t } = useI18n();
+  const tr = (key: string, def: string) => {
+    const v = t(key);
+    return v && v !== key ? v : def;
+  };
 
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
 
+        // Send proper JSON types: the firmware only accepts a number for tx_power and
+        // booleans for the switches (a plain FormData object sent "17" and "on").
         const fd = new FormData(e.currentTarget);
-        const data = Object.fromEntries(fd.entries());
+        const data = {
+          node_id: String(fd.get("node_id") ?? ""),
+          tx_power: Number(fd.get("tx_power") ?? 17),
+          passive_mode: fd.get("passive_mode") !== null,
+          ignore_unknown: fd.get("ignore_unknown") !== null,
+        };
 
         fetch("/api/io/config", {
           method: "POST",
@@ -26,8 +39,10 @@ export function ControllerSettings() {
             "X-OTA-Key": otaData.data?.key || "",
           },
         })
-          .then(() => {
+          .then((res) => {
+            if (!res.ok) throw new Error(String(res.status));
             showToast("toast.controller-saved", ToastType.SUCCESS);
+            api.refresh();
           })
           .catch(() => {
             showToast("toast.error-saving-controller", ToastType.ERROR);
@@ -91,6 +106,28 @@ export function ControllerSettings() {
               checked={api.data?.passive_mode || false}
             />
           </div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:8px;">
+            <span style="font-size:12px;color:var(--text2);">
+              {tr("label.ignore-unknown", "Ignore unknown devices")}
+            </span>
+            <Checkbox
+              name={"ignore_unknown"}
+              checked={api.data?.ignore_unknown || false}
+            />
+          </div>
+          <p class="auth-state">
+            {tr(
+              "label.ignore-unknown-info",
+              "Messages from devices that are not paired with this board are ignored right after they are received: they are not processed, logged or forwarded to MQTT or the browser. While pairing, adding a remote or capturing a key the filter is temporarily off.",
+            )}
+          </p>
+          {api.data?.ignore_unknown &&
+          api.data?.ignored_frames !== undefined ? (
+            <p class="auth-state">
+              {tr("label.ignored-frames", "Ignored since start")}:{" "}
+              {api.data.ignored_frames}
+            </p>
+          ) : null}
           <button class="s-btn primary" data-i18n="button.save-controller">
             Save Controller Settings
           </button>

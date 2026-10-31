@@ -101,6 +101,63 @@ namespace iohome
   static volatile bool sSniffKeyActive = false;                    // true while passive key sniffing is active
   static char sSniffedKey[33] = {};                                // last captured key as 32-char hex + null
   static int64_t sSniffStartUs = 0;                                // timestamp when sniffing started
+  // "Ignore unknown devices" filter. The radio task checks every received frame against a small
+  // cache of known node IDs (24-bit), rebuilt about once a second from sDeviceMap and sRemoteMap by
+  // the IO frame task, which already holds sMutex. A spinlock guards the cache because the radio
+  // task must not touch the maps themselves.
+  constexpr int KNOWN_IDS_MAX = 64;
+  constexpr int64_t KNOWN_IDS_REBUILD_US = 1'000'000LL;
+  static portMUX_TYPE sKnownIdsMux = portMUX_INITIALIZER_UNLOCKED;
+  static uint32_t sKnownIds[KNOWN_IDS_MAX];
+  static int sKnownIdsCount = 0;
+  static std::atomic<int64_t> sKnownIdsRebuiltUs{0};
+  static std::atomic<bool> sIgnoreUnknown{false};
+  static std::atomic<bool> sUnknownFilterPaused{false};
+  static std::atomic<int> sUnknownFilterBypass{0}; // > 0 while pairing
+  static std::atomic<uint32_t> sIgnoredFrames{0};
+
+  /// RAII: process all frames while a pairing exchange is running
+  struct UnknownFilterBypass
+  {
+    UnknownFilterBypass() { sUnknownFilterBypass.fetch_add(1); }
+    ~UnknownFilterBypass() { sUnknownFilterBypass.fetch_sub(1); }
+  };
+
+  static uint32_t node_id_u32(const uint8_t *node)
+  {
+    return ((uint32_t)node[0] << 16) | ((uint32_t)node[1] << 8) | (uint32_t)node[2];
+  }
+
+  static uint32_t node_hex_u32(const std::string &hex)
+  {
+    return (uint32_t)strtoul(hex.c_str(), nullptr, 16) & 0xFFFFFFu;
+  }
+
+  /// Rebuild the known-ID cache. Caller holds sMutex (protects sDeviceMap).
+  static void rebuild_known_ids()
+  {
+    uint32_t ids[KNOWN_IDS_MAX];
+    int n = 0;
+    for (const auto &kv : sDeviceMap)
+      if (!kv.second.is_deleted && n < KNOWN_IDS_MAX)
+        ids[n++] = node_hex_u32(kv.first);
+    {
+      std::lock_guard<std::mutex> guard(sRemoteMapMutex);
+      for (const auto &kv : sRemoteMap)
+      {
+        if (n < KNOWN_IDS_MAX)
+          ids[n++] = node_hex_u32(kv.first);
+        for (const std::string &dev : kv.second) // includes 1W devices, which are not in sDeviceMap
+          if (n < KNOWN_IDS_MAX)
+            ids[n++] = node_hex_u32(dev);
+      }
+    }
+    portENTER_CRITICAL(&sKnownIdsMux);
+    memcpy(sKnownIds, ids, n * sizeof(uint32_t));
+    sKnownIdsCount = n;
+    portEXIT_CRITICAL(&sKnownIdsMux);
+  }
+
   static std::atomic<int> sStatusPollHolds{0};                     // HoldStatusPolls() reference count
   static std::atomic<int64_t> sStatusPollHoldStartUs{0};           // when the count last went 0 -> 1
 
@@ -373,6 +430,12 @@ namespace iohome
         {
           rxFrame.frequency = item.frequency;
           rxFrame.rssi = item.rssi;
+          if (ioHome->ShouldIgnoreFrame(rxFrame.frame))
+          {
+            sIgnoredFrames.fetch_add(1);
+            waitTime = CHANNEL_HOP_TIME_US * portTICK_PERIOD_MS / 1000;
+            continue; // "Ignore unknown devices": not ours — don't log, show or process it
+          }
           IO_LOGI("Received at {} ({}us preamble) - RSSI {:.1f}", item.timestamp, item.preamble_time, item.rssi);
           IO_LOGI("Rcvd ({:.2f}) command {:02X} from {} to {} CTRL0 {:02X} CTRL1 {:02X} - {} bytes: {}",
                   rxFrame.frequency / 1000000.0, rxFrame.frame.command_id, buffToHexString(NODE_ID_SIZE, rxFrame.frame.src_node), buffToHexString(NODE_ID_SIZE, rxFrame.frame.dest_node),
@@ -537,6 +600,47 @@ namespace iohome
     return true;
   }
 
+  void IoHomeControl::SetIgnoreUnknownDevices(bool enable)
+  {
+    sKnownIdsRebuiltUs.store(0); // rebuild the cache on the next pass of the IO frame task
+    sIgnoreUnknown.store(enable);
+  }
+
+  bool IoHomeControl::isIgnoreUnknownDevices() const
+  {
+    return sIgnoreUnknown.load();
+  }
+
+  void IoHomeControl::SetUnknownFilterPaused(bool paused)
+  {
+    sUnknownFilterPaused.store(paused);
+  }
+
+  uint32_t IoHomeControl::GetIgnoredFrameCount() const
+  {
+    return sIgnoredFrames.load();
+  }
+
+  bool IoHomeControl::ShouldIgnoreFrame(const IoFrame &frame)
+  {
+    if (!sIgnoreUnknown.load() || sUnknownFilterPaused.load() || sUnknownFilterBypass.load() > 0 ||
+        mPassiveMode || sSniffKeyActive)
+      return false;
+    if (sKnownIdsRebuiltUs.load() == 0)
+      return false; // cache not built yet (just started or setting just changed)
+    const uint32_t src = node_id_u32(frame.src_node);
+    const uint32_t dst = node_id_u32(frame.dest_node);
+    const uint32_t own = node_id_u32(mOwnNodeId);
+    if (src == own || dst == own)
+      return false;
+    bool known = false;
+    portENTER_CRITICAL(&sKnownIdsMux);
+    for (int i = 0; i < sKnownIdsCount && !known; i++)
+      known = (sKnownIds[i] == src || sKnownIds[i] == dst);
+    portEXIT_CRITICAL(&sKnownIdsMux);
+    return !known;
+  }
+
   void IoHomeControl::SetUnknownSenderCallback(UnknownSenderCallback cb)
   {
     sUnknownSenderCallback = cb;
@@ -666,6 +770,11 @@ namespace iohome
     {
       if (xSemaphoreTake(sMutex, MUTEX_MAX_WAIT_TICKS))
       {
+        if (sIgnoreUnknown.load() && esp_timer_get_time() - sKnownIdsRebuiltUs.load() > KNOWN_IDS_REBUILD_US)
+        {
+          rebuild_known_ids();
+          sKnownIdsRebuiltUs.store(esp_timer_get_time());
+        }
         RxFrameQueueItem item;
         if (xQueueReceive(sRxIoQueue, &item, 0))
         {
@@ -1054,6 +1163,7 @@ namespace iohome
 
   PairResult IoHomeControl::DiscoverAndPairDevice()
   {
+    UnknownFilterBypass bypass; // pairing partners are not known yet
     if (!mInitialized || !mReceiving || mPassiveMode)
     {
       IO_LOGE("DiscoverAndPairDevice: invalid state! (not initialized or not listening or passive mode)");
@@ -1436,6 +1546,7 @@ namespace iohome
 
   std::string IoHomeControl::PairAsDevice(const volatile bool *active)
   {
+    UnknownFilterBypass bypass; // pairing partners are not known yet
     if (!mInitialized || !mReceiving || mPassiveMode)
     {
       IO_LOGE("PairAsDevice: invalid state!");

@@ -961,6 +961,7 @@ static struct
     struct arg_str *node_id;
     struct arg_int *tx_power;
     struct arg_int *ignore_auto_update;
+    struct arg_int *ignore_unknown;
     struct arg_end *end;
 } ioconfig_args;
 
@@ -981,6 +982,7 @@ static int do_ioconfig_cmd(int argc, char **argv)
         ESP_LOGI(TAG, "Our node ID: %s", IoHomeConfig::GetIoNodeId().c_str());
         ESP_LOGI(TAG, "Tx power: %d", IoHomeConfig::GetTxPower());
         ESP_LOGI(TAG, "Ignore auto-update: %s", IoHomeConfig::isIgnoreAutoUpdateEnabled() ? "enabled" : "disabled");
+        ESP_LOGI(TAG, "Ignore unknown devices: %s", IoHomeConfig::isIgnoreUnknownEnabled() ? "enabled" : "disabled");
     }
     else if (ioconfig_args.del->count > 0)
     {
@@ -1084,6 +1086,18 @@ static int do_ioconfig_cmd(int argc, char **argv)
                 ESP_LOGI(TAG, "Ignore auto-update set to configuration storage: %s", IoHomeConfig::isIgnoreAutoUpdateEnabled() ? "enabled" : "disabled");
             }
         }
+        if (ioconfig_args.ignore_unknown->count > 0)
+        {
+            err = IoHomeConfig::SetIgnoreUnknown(ioconfig_args.ignore_unknown->ival[0] != 0);
+            if (err != ESP_OK)
+            {
+                ESP_LOGE(TAG, "Failed to set ignore unknown devices to configuration storage! (%d)", err);
+            }
+            else
+            {
+                ESP_LOGI(TAG, "Ignore unknown devices set to configuration storage: %s", IoHomeConfig::isIgnoreUnknownEnabled() ? "enabled" : "disabled");
+            }
+        }
         ESP_LOGI(TAG, "New configuration will be applied after reboot!");
     }
     return 0;
@@ -1099,7 +1113,8 @@ void register_ioconfig(void)
     ioconfig_args.node_id = arg_str0(NULL, "id", "<node ID>", "Board Node ID (string representation of 3 bytes, eg 112233)");
     ioconfig_args.tx_power = arg_int0(NULL, "power", "<power>", "Tx power (range 0-20)");
     ioconfig_args.ignore_auto_update = arg_int0(NULL, "ignoreautoupdate", "<state>", "1 to ignore auto-update flag and use timer value, 0 to trust auto-update");
-    ioconfig_args.end = arg_end(8);
+    ioconfig_args.ignore_unknown = arg_int0(NULL, "ignoreunknown", "<state>", "1 to ignore frames from devices not paired with this board, 0 to process all");
+    ioconfig_args.end = arg_end(9);
 
     const esp_console_cmd_t ioconfig_cmd = {
         .command = "io_config",

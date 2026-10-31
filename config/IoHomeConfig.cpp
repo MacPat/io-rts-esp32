@@ -10,6 +10,7 @@ static const std::string IOHOME_CONFIG_SYSTEM_KEY = "system_key";          // Ke
 static const std::string IOHOME_CONFIG_NODE_ID = "node_id";                // Key to store our own node ID (string representation of 3 bytes)
 static const std::string IOHOME_CONFIG_TX_POWER = "tx_power";              // Key to store Tx power (uint8_t)
 static const std::string IOHOME_CONFIG_IGNORE_AUTO_UPDATE = "ign_autoupd"; // Key to store ignore auto-update flag (uint8_t)
+static const std::string IOHOME_CONFIG_IGNORE_UNKNOWN = "ign_unknown"; // Key to store "ignore unknown devices" flag (uint8_t)
 
 using namespace Helpers;
 
@@ -23,6 +24,7 @@ namespace Config
         NvsHelpers::DeleteValue(IOHOME_CONFIG_NAMESPACE, IOHOME_CONFIG_NODE_ID);
         NvsHelpers::DeleteValue(IOHOME_CONFIG_NAMESPACE, IOHOME_CONFIG_TX_POWER);
         NvsHelpers::DeleteValue(IOHOME_CONFIG_NAMESPACE, IOHOME_CONFIG_IGNORE_AUTO_UPDATE);
+        NvsHelpers::DeleteValue(IOHOME_CONFIG_NAMESPACE, IOHOME_CONFIG_IGNORE_UNKNOWN);
     }
     bool IoHomeConfig::isLoggingEnabled()
     {
@@ -90,6 +92,17 @@ namespace Config
     {
         uint8_t is_enabled = ignoreAutoUpdate ? 0x01 : 0x00;
         return NvsHelpers::SetValue(IOHOME_CONFIG_NAMESPACE, IOHOME_CONFIG_IGNORE_AUTO_UPDATE, is_enabled);
+    }
+    bool IoHomeConfig::isIgnoreUnknownEnabled()
+    {
+        uint8_t is_enabled = false; // off by default: process everything, as before
+        NvsHelpers::GetValue(IOHOME_CONFIG_NAMESPACE, IOHOME_CONFIG_IGNORE_UNKNOWN, is_enabled);
+        return is_enabled;
+    }
+    esp_err_t IoHomeConfig::SetIgnoreUnknown(bool ignoreUnknown)
+    {
+        uint8_t is_enabled = ignoreUnknown ? 0x01 : 0x00;
+        return NvsHelpers::SetValue(IOHOME_CONFIG_NAMESPACE, IOHOME_CONFIG_IGNORE_UNKNOWN, is_enabled);
     }
     uint8_t IoHomeConfig::GetTxPower()
     {

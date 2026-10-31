@@ -65,10 +65,9 @@ namespace IoRts
             level = '?';
             break;
         }
+        // The web log already receives this line through the ESP_LOGx call above (log hook in the
+        // web server); broadcasting it here as well showed every radio line twice.
         if (sMqttHelper != nullptr) sMqttHelper->SendLog(std::format("{} {}: {}", level, tag, log));
-#if CONFIG_WEB_ENABLED
-        web_server_broadcast_log(std::format("{} {}: {}", level, tag, log).c_str());
-#endif
     }
 
     static void deviceStatusCallback(const std::string deviceID, const iohome::IoDevice &device)
@@ -542,12 +541,16 @@ namespace IoRts
     void IoRtsManager::StartRemoteCapture()
     {
         sCaptureActive = true;
+        if (mIoHome)
+            mIoHome->SetUnknownFilterPaused(true); // a new remote is still unknown
         ESP_LOGI(TAG, "Remote capture window opened");
     }
 
     void IoRtsManager::StopRemoteCapture()
     {
         sCaptureActive = false;
+        if (mIoHome)
+            mIoHome->SetUnknownFilterPaused(false);
         ESP_LOGI(TAG, "Remote capture window closed");
     }
 
@@ -759,6 +762,7 @@ namespace IoRts
             {
                 mIoHome->SetVerbose(IoHomeConfig::isLoggingEnabled());
                 mIoHome->SetIgnoreAutoUpdate(IoHomeConfig::isIgnoreAutoUpdateEnabled());
+                mIoHome->SetIgnoreUnknownDevices(IoHomeConfig::isIgnoreUnknownEnabled());
                 mIoHome->Begin(IoHomeConfig::GetIoNodeId(), IoHomeConfig::GetIoSystemKey(), IoHomeConfig::isPassiveModeEnabled());
                 mIoHome->ConfigureRadio(IoHomeConfig::GetTxPower());
                 mIo1W = new iohome::Io1WControl(mIoHome);

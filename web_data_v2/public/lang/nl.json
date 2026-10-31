@@ -490,5 +490,8 @@
   "label.reset-reason.unknown": "Onbekend",
   "label.prev-alloc-fail": "Geheugen op in vorige run",
   "label.heap-largest": "Grootste vrije blok",
-  "label.alloc-fail": "Geheugen op sinds start"
+  "label.alloc-fail": "Geheugen op sinds start",
+  "label.ignore-unknown": "Onbekende apparaten negeren",
+  "label.ignore-unknown-info": "Berichten van apparaten die niet aan dit bord gekoppeld zijn, worden direct na ontvangst genegeerd: ze worden niet verwerkt, niet gelogd en niet doorgestuurd naar MQTT of de browser. Tijdens het koppelen, het toevoegen van een afstandsbediening en het opvangen van een sleutel staat de filter tijdelijk uit.",
+  "label.ignored-frames": "Genegeerd sinds start"
 }

@@ -15,7 +15,11 @@
 - The pairing-log `BOOT` line now includes the start number, reason and previous-run data, and is written once the clock is set (max. 60 s wait) so it gets a real timestamp instead of `boot+6s`.
 - Factory reset now also erases the HTTPS certificate (NVS namespace `https`).
 
+- **Ignore unknown devices** (Settings → Controller, CLI `io_config --ignoreunknown=1`, off by default): frames whose sender and destination are both not paired with this board (not the board itself, not a known device, not a linked remote) are dropped right after parsing — not processed, logged, shown on the OLED or forwarded to MQTT or the browser. Off in passive mode, while key sniffing, while pairing and while a remote capture window is open. Known IDs are cached (64 × 3 bytes) and refreshed once a second; `/api/io/config` reports `ignored_frames`.
+
 ### Fixed
+- **Radio log lines appeared twice in the web log**: the radio logger sent each line itself and it also arrived through the ESP log hook.
+- **Controller settings could not save TX power or passive mode from the web UI**: the form sent `"17"` and `"on"` as strings, which the firmware ignores. It now sends a number and booleans.
 - **Pairing log no longer needs ~40 KB of heap.** Once it reached 500 lines, every new entry re-read the whole file and reserved ~40 KB of contiguous memory to drop the oldest line, which fails (and crashes) on boards with little free heap. The log is now a ring of 8 parts of < 4 KB (one LittleFS block each, 32 KB total, same as before); when the newest part is full the oldest part is dropped, so at most 1/8 of the history goes at a time. Download and the web UI still get one file, oldest first. A large log from older firmware is split into parts on the first new entry.
 
 ### Added (continued)

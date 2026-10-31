@@ -90,6 +90,22 @@ namespace iohome
     /// @param enable true to ignore auto-update flag and use timer, false to trust auto-update
     void SetIgnoreAutoUpdate(bool enable) { mIgnoreAutoUpdate = enable; }
 
+    /// @brief "Ignore unknown devices": drop received frames whose sender and destination are both
+    ///        not paired with this controller (not this controller, not a known device, not a linked
+    ///        remote), right after parsing — they are not processed, logged or forwarded.
+    ///        Never active in passive mode, while key sniffing, while pairing or while paused.
+    void SetIgnoreUnknownDevices(bool enable);
+    bool isIgnoreUnknownDevices() const;
+
+    /// @brief Temporarily process all frames again (e.g. while a remote capture window is open)
+    void SetUnknownFilterPaused(bool paused);
+
+    /// @brief Number of frames dropped by the unknown-device filter since start
+    uint32_t GetIgnoredFrameCount() const;
+
+    /// @brief True when the unknown-device filter drops this frame
+    bool ShouldIgnoreFrame(const IoFrame &frame);
+
     /// @brief Register callback for frames from unregistered senders (useful for remote capture)
     /// @param cb Callback function, or nullptr to unregister
     void SetUnknownSenderCallback(UnknownSenderCallback cb);

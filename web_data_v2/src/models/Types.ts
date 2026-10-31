@@ -49,6 +49,8 @@ export interface IoConfig {
   node_id: string;
   tx_power: number;
   passive_mode: boolean;
+  ignore_unknown?: boolean;
+  ignored_frames?: number;
 }
 
 export interface MqttConfig {

@@ -114,7 +114,7 @@ config_mqtt  [-rd] [--state=<state>] [--addr=<address>] [--port=<port>] [--id=<c
 
 ### IO configuration
 ```
-io_config  [-rd] [--logging=<state>] [--passive=<state>] [--key=<system key>] [--id=<node ID>] [--power=<power>] [--ignoreautoupdate=<state>]
+io_config  [-rd] [--logging=<state>] [--passive=<state>] [--key=<system key>] [--id=<node ID>] [--power=<power>] [--ignoreautoupdate=<state>] [--ignoreunknown=<state>]
   Configure IO layer
     -r, --read  Read current configuration from storage (no other argument required)
   -d, --delete  Delete current configuration in storage (no other argument required)
@@ -124,6 +124,7 @@ io_config  [-rd] [--logging=<state>] [--passive=<state>] [--key=<system key>] [-
   --id=<node ID>  Board Node ID (string representation of 3 bytes, eg 112233)
   --power=<power>  Tx power (range 0-20)
   --ignoreautoupdate=<state>  1 to ignore auto-update flag and use timer value, 0 to trust auto-update
+  --ignoreunknown=<state>  1 to ignore frames from devices not paired with this board, 0 to process all
 ```
 
 ### Discover and pair a device

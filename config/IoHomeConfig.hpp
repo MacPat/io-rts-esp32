@@ -57,6 +57,14 @@ namespace Config
         /// @return ESP_OK if configuration put to storage without error
         static esp_err_t SetIgnoreAutoUpdate(bool ignoreAutoUpdate);
 
+        /// @brief Get "ignore unknown devices" flag from configuration storage
+        /// @return true if frames from/to devices not paired with this controller are dropped on receipt
+        static bool isIgnoreUnknownEnabled();
+
+        /// @brief Set "ignore unknown devices" flag to configuration storage
+        /// @return ESP_OK if configuration put to storage without error
+        static esp_err_t SetIgnoreUnknown(bool ignoreUnknown);
+
         /// @brief Get TX Power from configuration storage
         /// @return TX Power (dBm)
         static uint8_t GetTxPower();

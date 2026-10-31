@@ -2050,6 +2050,9 @@ static esp_err_t api_io_config_get(httpd_req_t *req)
     cJSON_AddStringToObject(obj, "node_id",      Config::IoHomeConfig::GetIoNodeId().c_str());
     cJSON_AddNumberToObject(obj, "tx_power",     Config::IoHomeConfig::GetTxPower());
     cJSON_AddBoolToObject(obj,   "passive_mode", Config::IoHomeConfig::isPassiveModeEnabled());
+    cJSON_AddBoolToObject(obj,   "ignore_unknown", Config::IoHomeConfig::isIgnoreUnknownEnabled());
+    if (s_manager && s_manager->mIoHome)
+        cJSON_AddNumberToObject(obj, "ignored_frames", s_manager->mIoHome->GetIgnoredFrameCount());
     send_json(req, obj);
     return ESP_OK;
 }
@@ -2094,6 +2097,14 @@ static esp_err_t api_io_config_post(httpd_req_t *req)
         Config::IoHomeConfig::ActivatePassiveMode(passive);
         if (s_manager && s_manager->mIoHome)
             s_manager->mIoHome->SetPassiveMode(passive);
+    }
+
+    cJSON *jIgnore = cJSON_GetObjectItem(json, "ignore_unknown");
+    if (cJSON_IsBool(jIgnore)) {
+        bool ignore = cJSON_IsTrue(jIgnore);
+        Config::IoHomeConfig::SetIgnoreUnknown(ignore);
+        if (s_manager && s_manager->mIoHome)
+            s_manager->mIoHome->SetIgnoreUnknownDevices(ignore);
     }
 
     cJSON_Delete(json);
@@ -2739,6 +2750,7 @@ static esp_err_t api_backup_get(httpd_req_t *req)
     cJSON_AddStringToObject(io_cfg, "node_id", Config::IoHomeConfig::GetIoNodeId().c_str());
     cJSON_AddNumberToObject(io_cfg, "tx_power", Config::IoHomeConfig::GetTxPower());
     cJSON_AddBoolToObject(io_cfg, "passive_mode", Config::IoHomeConfig::isPassiveModeEnabled());
+    cJSON_AddBoolToObject(io_cfg, "ignore_unknown", Config::IoHomeConfig::isIgnoreUnknownEnabled());
     cJSON_AddItemToObject(settings, "io", io_cfg);
 
     cJSON_AddItemToObject(root, "settings", settings);
@@ -2862,6 +2874,7 @@ static esp_err_t api_restore_post(httpd_req_t *req)
             v = cJSON_GetObjectItem(io_r, "node_id");      if (cJSON_IsString(v)) Config::IoHomeConfig::SetIoNodeId(v->valuestring);
             v = cJSON_GetObjectItem(io_r, "tx_power");     if (cJSON_IsNumber(v)) Config::IoHomeConfig::SetTxPower((uint8_t)v->valuedouble);
             v = cJSON_GetObjectItem(io_r, "passive_mode"); if (cJSON_IsBool(v)) Config::IoHomeConfig::ActivatePassiveMode(cJSON_IsTrue(v));
+            v = cJSON_GetObjectItem(io_r, "ignore_unknown"); if (cJSON_IsBool(v)) Config::IoHomeConfig::SetIgnoreUnknown(cJSON_IsTrue(v));
         }
     }
 
