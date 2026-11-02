@@ -493,5 +493,7 @@
   "label.alloc-fail": "Mémoire épuisée depuis le démarrage",
   "label.ignore-unknown": "Ignorer les appareils inconnus",
   "label.ignore-unknown-info": "Les messages des appareils qui ne sont pas appairés avec cette carte sont ignorés dès leur réception : ils ne sont ni traités, ni journalisés, ni transmis à MQTT ou au navigateur. Pendant l'appairage, l'ajout d'une télécommande ou la capture d'une clé, le filtre est temporairement désactivé.",
-  "label.ignored-frames": "Ignorés depuis le démarrage"
+  "label.ignored-frames": "Ignorés depuis le démarrage",
+  "label.reset-reason.reset_or_power_on": "Bouton reset ou mise sous tension",
+  "label.reset-reason.low_memory": "Redémarrage automatique : mémoire épuisée"
 }

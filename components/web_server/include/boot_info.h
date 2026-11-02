@@ -16,13 +16,13 @@ extern "C" {
 #define BOOT_INFO_TASK_NAME_LEN 16
 
 typedef struct {
-    const char *reason;        ///< short code: power_on, software, crash, task_watchdog, ...
+    const char *reason;        ///< short code: power_on, reset_or_power_on, software, low_memory, crash, task_watchdog, ...
     uint32_t boot_count;       ///< number of starts since the counter was introduced
     bool prev_valid;           ///< false after a power cut (RTC memory is lost then)
     uint32_t prev_uptime_s;    ///< how long the previous run lasted (last sample, ≤ 5 s off)
     uint32_t prev_heap_min;    ///< lowest free heap seen during the previous run
     uint32_t prev_fail_count;  ///< failed memory allocations in the previous run
-    uint32_t prev_fail_size;   ///< size of the last failed allocation (bytes)
+    uint32_t prev_fail_size;   ///< size of the first failed allocation (bytes)
     uint32_t prev_fail_free;   ///< free heap at that moment (bytes)
     uint32_t prev_fail_uptime_s; ///< when it happened (seconds after that start)
     char prev_fail_task[BOOT_INFO_TASK_NAME_LEN]; ///< task that asked for the memory
@@ -41,6 +41,10 @@ bool boot_info_log_boot_when_ready(void);
 /// @brief Writes a HEAP line to the pairing log 10 minutes after start and then every hour.
 /// Call from a periodic loop.
 void boot_info_log_heap_periodic(void);
+
+/// @brief Logs the first failed allocation, and restarts the board when the largest free block
+/// stays below 8 KB for 5 minutes. Call every few seconds.
+void boot_info_memory_watchdog(void);
 
 /// @brief Failed memory allocations in the current run.
 uint32_t boot_info_fail_count(void);

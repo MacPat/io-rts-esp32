@@ -493,5 +493,7 @@
   "label.alloc-fail": "Speicher voll seit Start",
   "label.ignore-unknown": "Unbekannte Geräte ignorieren",
   "label.ignore-unknown-info": "Nachrichten von Geräten, die nicht mit diesem Board gekoppelt sind, werden direkt nach dem Empfang ignoriert: Sie werden nicht verarbeitet, nicht protokolliert und nicht an MQTT oder den Browser weitergeleitet. Beim Koppeln, Hinzufügen einer Fernbedienung oder Abfangen eines Schlüssels ist der Filter vorübergehend aus.",
-  "label.ignored-frames": "Seit Start ignoriert"
+  "label.ignored-frames": "Seit Start ignoriert",
+  "label.reset-reason.reset_or_power_on": "Reset-Taste oder eingeschaltet",
+  "label.reset-reason.low_memory": "Selbst neu gestartet: Speicher voll"
 }

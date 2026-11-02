@@ -8,6 +8,7 @@ import useI18n from "../../hooks/useI18n";
 
 const UNEXPECTED = new Set([
   "crash",
+  "low_memory",
   "interrupt_watchdog",
   "task_watchdog",
   "watchdog",
@@ -16,6 +17,8 @@ const UNEXPECTED = new Set([
 
 const REASON_DEFAULTS: Record<string, string> = {
   power_on: "Power on",
+  reset_or_power_on: "Reset button or power on",
+  low_memory: "Restarted itself: out of memory",
   external: "Reset button",
   software: "Restart (update, reboot or settings)",
   crash: "Crash",

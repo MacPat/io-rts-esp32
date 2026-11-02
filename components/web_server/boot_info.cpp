@@ -17,21 +17,33 @@
 #include "nvs.h"
 
 #include "pair_log.h"
+#include "web_server.h"
 
 static const char *TAG = "boot_info";
 
-#define BOOT_INFO_MAGIC 0x10B00720u // changed whenever rtc_record_t changes
+#define BOOT_INFO_MAGIC 0x10B00721u // changed whenever rtc_record_t changes
 
 #define HEAP_LOG_FIRST_S    600   // first memory line 10 minutes after start (baseline)
 #define HEAP_LOG_INTERVAL_S 3600  // then every hour
 
-// Survives software restarts, crashes and watchdog resets; garbage after a power cut,
-// hence the magic + check value.
+// Memory watchdog: when the largest free block stays below this for LOWMEM_RESTART_S, the board
+// restarts itself. HTTPS and MQTT need far bigger blocks, so the board would otherwise stay
+// unreachable (seen: 40 hours with a 4 KB largest block) while the radio keeps running.
+#define LOWMEM_LARGEST_BLOCK (8 * 1024)
+#define LOWMEM_RESTART_S     300
+
+#define RESTART_CAUSE_NONE   0u
+#define RESTART_CAUSE_LOWMEM 0x4C4F574Du // "LOWM"
+
+// Survives software restarts, crashes, watchdog resets and the reset button; garbage after a
+// power cut, hence the magic + check value (the reset reason alone can't tell these apart: on an
+// ESP32 the reset button also reports "power on").
 typedef struct {
     uint32_t magic;
     uint32_t uptime_s;
     uint32_t heap_min;
-    // Last failed memory allocation in this run (written by the heap's failure hook)
+    uint32_t restart_cause;  // set just before a deliberate restart by this module
+    // First failed memory allocation in this run (written by the heap's failure hook)
     uint32_t fail_count;
     uint32_t fail_size;
     uint32_t fail_free;
@@ -45,6 +57,8 @@ static RTC_NOINIT_ATTR rtc_record_t s_rtc;
 static boot_info_t s_info = {};
 static bool s_logged = false;
 static uint32_t s_next_heap_log_s = HEAP_LOG_FIRST_S;
+static bool s_first_fail_logged = false;
+static uint32_t s_lowmem_since_s = 0;
 
 static uint32_t record_check(const rtc_record_t *r)
 {
@@ -83,7 +97,11 @@ static void alloc_failed_hook(size_t size, uint32_t caps, const char *function_n
 {
     (void)caps;
     (void)function_name;
-    s_rtc.fail_count++;
+    if (s_rtc.fail_count++ > 0)
+    {
+        s_rtc.check = record_check(&s_rtc);
+        return; // keep the details of the first failure: that is where it started
+    }
     s_rtc.fail_size = (uint32_t)size;
     s_rtc.fail_free = (uint32_t)heap_caps_get_free_size(MALLOC_CAP_DEFAULT);
     s_rtc.fail_uptime_s = (uint32_t)(esp_timer_get_time() / 1000000LL);
@@ -104,9 +122,12 @@ void boot_info_init(void)
     esp_reset_reason_t r = esp_reset_reason();
     s_info.reason = reason_code(r);
 
-    if (r != ESP_RST_POWERON && r != ESP_RST_BROWNOUT &&
-        s_rtc.magic == BOOT_INFO_MAGIC && s_rtc.check == record_check(&s_rtc))
+    if (s_rtc.magic == BOOT_INFO_MAGIC && s_rtc.check == record_check(&s_rtc))
     {
+        if (r == ESP_RST_POWERON)
+            s_info.reason = "reset_or_power_on"; // RTC memory intact: reset button, not a power cut
+        if (r == ESP_RST_SW && s_rtc.restart_cause == RESTART_CAUSE_LOWMEM)
+            s_info.reason = "low_memory";
         s_info.prev_valid = true;
         s_info.prev_uptime_s = s_rtc.uptime_s;
         s_info.prev_heap_min = s_rtc.heap_min;
@@ -159,6 +180,53 @@ uint32_t boot_info_fail_count(void)
     return s_rtc.fail_count;
 }
 
+void boot_info_memory_watchdog(void)
+{
+    uint32_t up = boot_info_uptime_s();
+    size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+
+    // Log the first failed allocation as soon as it is seen (the details are in RTC memory)
+    if (!s_first_fail_logged && s_rtc.fail_count > 0)
+    {
+        s_first_fail_logged = true;
+        int ws = 0, sock = 0;
+        web_server_connection_counts(&ws, &sock);
+        char line[160];
+        snprintf(line, sizeof(line), "OOM first: size=%uB task=%s free=%uB at=%us now_largest=%uB ws=%d sock=%d",
+                 (unsigned)s_rtc.fail_size, s_rtc.fail_task, (unsigned)s_rtc.fail_free,
+                 (unsigned)s_rtc.fail_uptime_s, (unsigned)largest, ws, sock);
+        pair_log_append(line);
+    }
+
+    if (largest >= LOWMEM_LARGEST_BLOCK)
+    {
+        s_lowmem_since_s = 0;
+        return;
+    }
+    if (s_lowmem_since_s == 0)
+    {
+        s_lowmem_since_s = up ? up : 1;
+        ESP_LOGW(TAG, "Largest free block %u B — restarting in %d s unless memory recovers",
+                 (unsigned)largest, LOWMEM_RESTART_S);
+        return;
+    }
+    if (up - s_lowmem_since_s < LOWMEM_RESTART_S)
+        return;
+
+    int ws = 0, sock = 0;
+    web_server_connection_counts(&ws, &sock);
+    char line[160];
+    snprintf(line, sizeof(line), "LOWMEM restart: free=%uB largest=%uB alloc_fail=%u ws=%d sock=%d",
+             (unsigned)esp_get_free_heap_size(), (unsigned)largest, (unsigned)s_rtc.fail_count, ws, sock);
+    pair_log_append(line); // may fail for lack of memory; the BOOT line will still say low_memory
+    ESP_LOGE(TAG, "%s", line);
+    s_rtc.uptime_s = up;
+    s_rtc.heap_min = (uint32_t)esp_get_minimum_free_heap_size();
+    s_rtc.restart_cause = RESTART_CAUSE_LOWMEM;
+    s_rtc.check = record_check(&s_rtc);
+    esp_restart();
+}
+
 bool boot_info_log_boot_when_ready(void)
 {
     if (s_logged)
@@ -176,7 +244,7 @@ bool boot_info_log_boot_when_ready(void)
     else
         n = snprintf(line, sizeof(line), "BOOT #%u reason=%s", (unsigned)s_info.boot_count, s_info.reason);
     if (s_info.prev_valid && s_info.prev_fail_count > 0 && n > 0 && n < (int)sizeof(line))
-        snprintf(line + n, sizeof(line) - n, " alloc_fail=%u last=%uB task=%s free=%uB at=%us",
+        snprintf(line + n, sizeof(line) - n, " alloc_fail=%u first=%uB task=%s free=%uB at=%us",
                  (unsigned)s_info.prev_fail_count, (unsigned)s_info.prev_fail_size, s_info.prev_fail_task,
                  (unsigned)s_info.prev_fail_free, (unsigned)s_info.prev_fail_uptime_s);
     pair_log_append(line);
@@ -190,13 +258,15 @@ void boot_info_log_heap_periodic(void)
     if (up < s_next_heap_log_s)
         return;
     s_next_heap_log_s = up + HEAP_LOG_INTERVAL_S;
-    char line[112];
-    snprintf(line, sizeof(line), "HEAP up=%us free=%uKB min=%uKB largest=%uKB alloc_fail=%u",
+    int ws = 0, sock = 0;
+    web_server_connection_counts(&ws, &sock);
+    char line[136];
+    snprintf(line, sizeof(line), "HEAP up=%us free=%uKB min=%uKB largest=%uKB alloc_fail=%u ws=%d sock=%d",
              (unsigned)up,
              (unsigned)(esp_get_free_heap_size() / 1024),
              (unsigned)(esp_get_minimum_free_heap_size() / 1024),
              (unsigned)(heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT) / 1024),
-             (unsigned)s_rtc.fail_count);
+             (unsigned)s_rtc.fail_count, ws, sock);
     pair_log_append(line);
 }
 

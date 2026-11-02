@@ -161,6 +161,7 @@ extern "C" void app_main(void)
 #if CONFIG_WEB_ENABLED
         boot_info_log_boot_when_ready();
         boot_info_log_heap_periodic();
+        boot_info_memory_watchdog();
 #endif
         vTaskDelay(pdMS_TO_TICKS(5000));
     }

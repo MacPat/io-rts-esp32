@@ -493,5 +493,7 @@
   "label.alloc-fail": "Out of memory since start",
   "label.ignore-unknown": "Ignore unknown devices",
   "label.ignore-unknown-info": "Messages from devices that are not paired with this board are ignored right after they are received: they are not processed, logged or forwarded to MQTT or the browser. While pairing, adding a remote or capturing a key the filter is temporarily off.",
-  "label.ignored-frames": "Ignored since start"
+  "label.ignored-frames": "Ignored since start",
+  "label.reset-reason.reset_or_power_on": "Reset button or power on",
+  "label.reset-reason.low_memory": "Restarted itself: out of memory"
 }

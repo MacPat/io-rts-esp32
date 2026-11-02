@@ -1,3 +1,4 @@
+#include <inttypes.h>
 #include "CmdLineManagement.hpp"
 #include "MiscConfig.hpp"
 #include "web_auth.h"
@@ -319,7 +320,7 @@ static void cmd_line_task(void *arg)
                 {
                     retry_counter++;
                     int32_t penalty = 2 * retry_counter;
-                    printf("Login failed! %ld attempts failed, %ld seconds penalty!\n", retry_counter, penalty);
+                    printf("Login failed! %" PRId32 " attempts failed, %" PRId32 " seconds penalty!\n", (int32_t)retry_counter, penalty);
                     vTaskDelay(pdMS_TO_TICKS(penalty * 1000));
                 }
             }
