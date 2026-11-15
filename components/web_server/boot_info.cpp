@@ -23,8 +23,14 @@ static const char *TAG = "boot_info";
 
 #define BOOT_INFO_MAGIC 0x10B00721u // changed whenever rtc_record_t changes
 
-#define HEAP_LOG_FIRST_S    600   // first memory line 10 minutes after start (baseline)
-#define HEAP_LOG_INTERVAL_S 3600  // then every hour
+// HEAP lines in the pairing log: a baseline 10 minutes after start, then only when memory
+// changes noticeably (checked every minute), and at least once a day as a sign of life. An
+// hourly line filled the 32 KB log in about two weeks and pushed real events out.
+#define HEAP_LOG_FIRST_S      600
+#define HEAP_LOG_CHECK_S      60
+#define HEAP_LOG_HEARTBEAT_S  86400
+#define HEAP_LOG_DELTA_FREE   (8 * 1024) // free heap or largest block moved this much
+#define HEAP_LOG_DELTA_MIN    (4 * 1024) // lowest free heap dropped this much
 
 // Memory watchdog: when the largest free block stays below this for LOWMEM_RESTART_S, the board
 // restarts itself. HTTPS and MQTT need far bigger blocks, so the board would otherwise stay
@@ -56,7 +62,18 @@ static RTC_NOINIT_ATTR rtc_record_t s_rtc;
 
 static boot_info_t s_info = {};
 static bool s_logged = false;
-static uint32_t s_next_heap_log_s = HEAP_LOG_FIRST_S;
+static uint32_t s_next_heap_check_s = HEAP_LOG_FIRST_S;
+static bool s_heap_logged = false;
+static uint32_t s_heap_logged_at_s = 0;
+static uint32_t s_heap_logged_free = 0;
+static uint32_t s_heap_logged_largest = 0;
+static uint32_t s_heap_logged_min = 0;
+static uint32_t s_heap_logged_fails = 0;
+
+static uint32_t abs_diff(uint32_t a, uint32_t b)
+{
+    return a > b ? a - b : b - a;
+}
 static bool s_first_fail_logged = false;
 static uint32_t s_lowmem_since_s = 0;
 
@@ -255,18 +272,36 @@ bool boot_info_log_boot_when_ready(void)
 void boot_info_log_heap_periodic(void)
 {
     uint32_t up = boot_info_uptime_s();
-    if (up < s_next_heap_log_s)
+    if (up < s_next_heap_check_s)
         return;
-    s_next_heap_log_s = up + HEAP_LOG_INTERVAL_S;
+    s_next_heap_check_s = up + HEAP_LOG_CHECK_S;
+
+    uint32_t free_b = (uint32_t)esp_get_free_heap_size();
+    uint32_t min_b = (uint32_t)esp_get_minimum_free_heap_size();
+    uint32_t largest = (uint32_t)heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+    uint32_t fails = s_rtc.fail_count;
+
+    if (s_heap_logged &&
+        up - s_heap_logged_at_s < HEAP_LOG_HEARTBEAT_S &&
+        abs_diff(free_b, s_heap_logged_free) < HEAP_LOG_DELTA_FREE &&
+        abs_diff(largest, s_heap_logged_largest) < HEAP_LOG_DELTA_FREE &&
+        s_heap_logged_min - min_b < HEAP_LOG_DELTA_MIN && // min only goes down
+        fails == s_heap_logged_fails)
+        return;
+
+    s_heap_logged = true;
+    s_heap_logged_at_s = up;
+    s_heap_logged_free = free_b;
+    s_heap_logged_largest = largest;
+    s_heap_logged_min = min_b;
+    s_heap_logged_fails = fails;
+
     int ws = 0, sock = 0;
     web_server_connection_counts(&ws, &sock);
     char line[136];
     snprintf(line, sizeof(line), "HEAP up=%us free=%uKB min=%uKB largest=%uKB alloc_fail=%u ws=%d sock=%d",
-             (unsigned)up,
-             (unsigned)(esp_get_free_heap_size() / 1024),
-             (unsigned)(esp_get_minimum_free_heap_size() / 1024),
-             (unsigned)(heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT) / 1024),
-             (unsigned)s_rtc.fail_count, ws, sock);
+             (unsigned)up, (unsigned)(free_b / 1024), (unsigned)(min_b / 1024),
+             (unsigned)(largest / 1024), (unsigned)fails, ws, sock);
     pair_log_append(line);
 }
 

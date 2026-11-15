@@ -38,8 +38,8 @@ void boot_info_sample(void);
 /// Call from a periodic loop; returns true once done.
 bool boot_info_log_boot_when_ready(void);
 
-/// @brief Writes a HEAP line to the pairing log 10 minutes after start and then every hour.
-/// Call from a periodic loop.
+/// @brief Writes a HEAP line to the pairing log 10 minutes after start, then whenever memory
+/// changes noticeably and at least once a day. Call from a periodic loop.
 void boot_info_log_heap_periodic(void);
 
 /// @brief Logs the first failed allocation, and restarts the board when the largest free block
